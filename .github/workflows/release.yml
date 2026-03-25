@@ -57,6 +57,8 @@ jobs:
       contents: read
 
     steps:
+      - uses: actions/checkout@v4
+
       - name: Require successful CI for tagged commit
         env:
           GH_TOKEN: ${{ github.token }}
