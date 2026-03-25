@@ -49,8 +49,70 @@ jobs:
               --latest
           fi
 
-  build:
+  verify_ci:
     needs: create_release
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - name: Require successful CI for tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          import sys
+
+          head_sha = os.environ["HEAD_SHA"]
+          result = subprocess.run(
+              [
+                  "gh",
+                  "run",
+                  "list",
+                  "--workflow",
+                  "CI",
+                  "--commit",
+                  head_sha,
+                  "--json",
+                  "databaseId,status,conclusion,url,headSha",
+                  "--limit",
+                  "10",
+              ],
+              check=True,
+              capture_output=True,
+              text=True,
+          )
+          runs = json.loads(result.stdout)
+          completed = [
+              run for run in runs
+              if run["headSha"] == head_sha and run["status"] == "completed"
+          ]
+
+          if not completed:
+              print(f"No completed CI run found for commit {head_sha}.")
+              print("Push the commit first and wait for the CI workflow to finish successfully before tagging.")
+              sys.exit(1)
+
+          latest = completed[0]
+          if latest["conclusion"] != "success":
+              print(f"CI gate is not green for commit {head_sha}.")
+              print(f"Run URL: {latest['url']}")
+              print(f"Conclusion: {latest['conclusion']}")
+              sys.exit(1)
+
+          print(f"Using CI gate: {latest['url']}")
+          PY
+
+  build:
+    needs:
+      - create_release
+      - verify_ci
     permissions:
       contents: write
     strategy:
@@ -101,7 +163,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.rust_target }}
-          components: rustfmt, clippy
 
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
@@ -122,8 +183,41 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Run full verification gate
-        run: npm run verify
+      - name: Validate signing secrets early
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_UPDATER_PUBKEY: ${{ secrets.TAURI_UPDATER_PUBKEY }}
+        run: |
+          if [[ -z "${TAURI_SIGNING_PRIVATE_KEY}" ]]; then
+            echo "Missing required secret: TAURI_SIGNING_PRIVATE_KEY" >&2
+            exit 1
+          fi
+
+          if [[ -z "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD}" ]]; then
+            echo "Missing required secret: TAURI_SIGNING_PRIVATE_KEY_PASSWORD" >&2
+            exit 1
+          fi
+
+          if [[ -z "${TAURI_UPDATER_PUBKEY}" ]]; then
+            echo "Missing required secret: TAURI_UPDATER_PUBKEY" >&2
+            exit 1
+          fi
+
+          first_line="$(printf '%s\n' "${TAURI_SIGNING_PRIVATE_KEY}" | head -n 1)"
+          if [[ "${first_line}" != untrusted\ comment:* ]]; then
+            echo "TAURI_SIGNING_PRIVATE_KEY is not a complete Tauri updater secret key." >&2
+            echo "Expected the first line to start with 'untrusted comment:'." >&2
+            exit 1
+          fi
+
+          pubkey_first_line="$(printf '%s\n' "${TAURI_UPDATER_PUBKEY}" | head -n 1)"
+          if [[ "${pubkey_first_line}" != untrusted\ comment:* ]]; then
+            echo "TAURI_UPDATER_PUBKEY is not a complete Tauri updater public key." >&2
+            echo "Expected the first line to start with 'untrusted comment:'." >&2
+            exit 1
+          fi
 
       - name: Build Tauri release bundle
         env:

@@ -6,10 +6,17 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+#[cfg(target_os = "macos")]
 use std::process::Command;
+#[cfg(target_os = "macos")]
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
+#[cfg(target_os = "macos")]
+use tauri::Emitter;
+#[cfg(target_os = "macos")]
+use tauri::WindowEvent;
+use tauri::{AppHandle, Manager, State};
+#[cfg(target_os = "macos")]
 use tracing::warn;
 
 #[cfg(target_os = "macos")]
@@ -22,6 +29,7 @@ use tunnel::{
     stop_all_tunnels, stop_tunnel, AppState,
 };
 use updater::{check_for_app_update, download_and_install_app_update, get_app_version};
+#[cfg(target_os = "macos")]
 const MAIN_WINDOW_LABEL: &str = "main";
 
 #[cfg(target_os = "macos")]
@@ -55,6 +63,7 @@ struct MenuBarState {
     close_action: Mutex<CloseAction>,
     status: Mutex<String>,
     profiles: Mutex<Vec<MenuBarProfile>>,
+    #[cfg(target_os = "macos")]
     quitting: AtomicBool,
 }
 
@@ -68,6 +77,7 @@ struct MenuBarProfile {
     can_stop: bool,
 }
 
+#[cfg(target_os = "macos")]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct MenuBarProfileActionPayload {
@@ -79,11 +89,6 @@ struct MenuBarProfileActionPayload {
 fn main_window(app: &AppHandle) -> Result<tauri::WebviewWindow, String> {
     app.get_webview_window(MAIN_WINDOW_LABEL)
         .ok_or_else(|| "Main window is not available".to_string())
-}
-
-#[cfg(not(target_os = "macos"))]
-fn main_window(_app: &AppHandle) -> Result<(), String> {
-    Err("Menu bar mode is only available on macOS".to_string())
 }
 
 #[cfg(target_os = "macos")]
@@ -228,11 +233,6 @@ fn show_main_window(app: &AppHandle, state: &MenuBarState) -> Result<(), String>
     sync_dock_visibility(app, state)
 }
 
-#[cfg(not(target_os = "macos"))]
-fn show_main_window(_app: &AppHandle, _state: &MenuBarState) -> Result<(), String> {
-    Ok(())
-}
-
 #[cfg(target_os = "macos")]
 fn hide_main_window_to_menu_bar(app: &AppHandle, state: &MenuBarState) -> Result<(), String> {
     let window = main_window(app)?;
@@ -240,19 +240,9 @@ fn hide_main_window_to_menu_bar(app: &AppHandle, state: &MenuBarState) -> Result
     sync_dock_visibility(app, state)
 }
 
-#[cfg(not(target_os = "macos"))]
-fn hide_main_window_to_menu_bar(_app: &AppHandle, _state: &MenuBarState) -> Result<(), String> {
-    Ok(())
-}
-
 #[cfg(target_os = "macos")]
 fn should_hide_to_menu_bar(state: &MenuBarState) -> bool {
     *state.enabled.lock() && *state.close_action.lock() == CloseAction::HideToMenuBar
-}
-
-#[cfg(not(target_os = "macos"))]
-fn should_hide_to_menu_bar(_state: &MenuBarState) -> bool {
-    false
 }
 
 #[cfg(target_os = "macos")]
@@ -457,6 +447,8 @@ pub fn run() {
             Ok(())
         })
         .on_menu_event(|app, event| {
+            #[cfg(not(target_os = "macos"))]
+            let _ = (app, event);
             #[cfg(target_os = "macos")]
             {
                 let menu_bar_state = app.state::<Arc<MenuBarState>>();
@@ -495,6 +487,8 @@ pub fn run() {
             }
         })
         .on_window_event(|window, event| {
+            #[cfg(not(target_os = "macos"))]
+            let _ = (window, event);
             #[cfg(target_os = "macos")]
             {
                 let app = window.app_handle();

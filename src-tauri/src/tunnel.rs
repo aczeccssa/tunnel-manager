@@ -164,6 +164,7 @@ fn create_askpass_script(password: &str) -> Result<PathBuf, String> {
     let mut file = fs::File::create(&script_path).map_err(|e| e.to_string())?;
     file.write_all(script_content.as_bytes())
         .map_err(|e| e.to_string())?;
+    #[cfg(unix)]
     fs::set_permissions(&script_path, fs::Permissions::from_mode(0o700))
         .map_err(|e| e.to_string())?;
 
