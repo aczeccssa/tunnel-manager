@@ -1,0 +1,454 @@
+@font-face {
+  font-family: "Quicksand";
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src:
+    url("../assets/fonts/quicksand-latin-300-normal.woff2") format("woff2"),
+    url("../assets/fonts/quicksand-latin-300-normal.woff") format("woff");
+}
+
+@font-face {
+  font-family: "Quicksand";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src:
+    url("../assets/fonts/quicksand-latin-400-normal.woff2") format("woff2"),
+    url("../assets/fonts/quicksand-latin-400-normal.woff") format("woff");
+}
+
+@font-face {
+  font-family: "Quicksand";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src:
+    url("../assets/fonts/quicksand-latin-500-normal.woff2") format("woff2"),
+    url("../assets/fonts/quicksand-latin-500-normal.woff") format("woff");
+}
+
+@font-face {
+  font-family: "Quicksand";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src:
+    url("../assets/fonts/quicksand-latin-600-normal.woff2") format("woff2"),
+    url("../assets/fonts/quicksand-latin-600-normal.woff") format("woff");
+}
+
+@font-face {
+  font-family: "Quicksand";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src:
+    url("../assets/fonts/quicksand-latin-700-normal.woff2") format("woff2"),
+    url("../assets/fonts/quicksand-latin-700-normal.woff") format("woff");
+}
+
+:root {
+  /* Surface Colors */
+  --surface: #070e1d;
+  --surface-dim: #070e1d;
+  --surface-bright: #062a5f;
+  --surface-variant: #082450;
+  --surface-tint: #c0c1ff;
+
+  /* Container Colors */
+  --surface-container-lowest: #000000;
+  --surface-container-low: #081328;
+  --surface-container: #091935;
+  --surface-container-high: #091f42;
+  --surface-container-highest: #082450;
+
+  /* Text & Content Colors */
+  --on-surface: #dde5ff;
+  --on-surface-variant: #95abde;
+  --inverse-on-surface: #4e5566;
+  --inverse-surface: #f9f9ff;
+
+  /* Primary Colors */
+  --primary: #c0c1ff;
+  --primary-dim: #b0b2ff;
+  --primary-container: #2f2ebe;
+  --on-primary: #2724b8;
+  --on-primary-container: #ccccff;
+  --inverse-primary: #494bd7;
+
+  /* Secondary Colors */
+  --secondary: #9f9da1;
+  --secondary-dim: #9f9da1;
+  --secondary-container: #3c3b3f;
+  --on-secondary: #202023;
+  --on-secondary-container: #c1bec3;
+
+  /* Tertiary Colors */
+  --tertiary: #e3e7ff;
+  --tertiary-dim: #c4cbe9;
+  --tertiary-container: #d2d9f8;
+  --on-tertiary: #4d546e;
+  --on-tertiary-container: #444c65;
+
+  /* Error Colors */
+  --error: #ec7c8a;
+  --error-dim: #b95463;
+  --error-container: #7f2737;
+  --on-error: #490013;
+  --on-error-container: #ff97a3;
+
+  /* Outline Colors */
+  --outline: #5f75a5;
+  --outline-variant: #314774;
+
+  /* Fixed Variant Colors */
+  --primary-fixed: #e1e0ff;
+  --primary-fixed-dim: #d1d0ff;
+  --on-primary-fixed: #2622b7;
+  --on-primary-fixed-variant: #4647d3;
+
+  --secondary-fixed: #e5e1e6;
+  --secondary-fixed-dim: #d7d3d8;
+  --on-secondary-fixed: #403f43;
+  --on-secondary-fixed-variant: #5c5b5f;
+
+  --tertiary-fixed: #d2d9f8;
+  --tertiary-fixed-dim: #c4cbe9;
+  --on-tertiary-fixed: #323951;
+  --on-tertiary-fixed-variant: #4e556f;
+
+  /* Background Colors */
+  --background: #070e1d;
+  --on-background: #dde5ff;
+
+  /* Additional Functional Colors */
+  --success: #38d39f;
+  --warning: #ffb74d;
+  --info: #64b5f6;
+
+  /* Legacy compatibility tokens so older views still inherit the active variant theme */
+  --color-bg: var(--background);
+  --color-surface: var(--surface-container);
+  --color-surface-hover: var(--surface-container-high);
+  --color-border: var(--outline-variant);
+  --color-text-primary: var(--on-surface);
+  --color-text-secondary: var(--on-surface-variant);
+  --color-text-tertiary: var(--outline);
+  --color-accent: var(--primary);
+  --color-accent-hover: var(--primary-dim);
+  --color-primary: var(--primary);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --radius-card: 1rem;
+  --radius-input: 0.75rem;
+  --shadow-modal: 0 24px 48px -16px rgb(0 0 0 / 0.35);
+  --glass-panel-bg: rgb(9 25 53 / 0.84);
+  --glass-panel-border: rgb(95 117 165 / 0.18);
+
+  /* Typography */
+  --font-headline: "Quicksand", "Manrope", sans-serif;
+  --font-body: "Quicksand", "Inter", sans-serif;
+  --font-label: "Quicksand", "Inter", sans-serif;
+}
+
+
+@media (prefers-color-scheme: light) {
+  :root {
+    /* Surface Colors (表面色：保留了原深色主题的冷灰蓝基调) */
+    --surface: #fbfbff;
+    --surface-dim: #dedeeb;
+    --surface-bright: #fbfbff;
+    --surface-variant: #e1e2ec;
+    --surface-tint: #494bd7;
+
+    /* Container Colors (容器色：由浅入深的灰蓝色阶) */
+    --surface-container-lowest: #ffffff;
+    --surface-container-low: #f4f4fa;
+    --surface-container: #efeff5;
+    --surface-container-high: #e9e9f0;
+    --surface-container-highest: #e3e3eb;
+
+    /* Text & Content Colors (文本与内容色：确保高对比度) */
+    --on-surface: #191a20;
+    --on-surface-variant: #444653;
+    --inverse-on-surface: #eff0f7;
+    --inverse-surface: #2e2f35;
+
+    /* Primary Colors (主色：使用了你原先的 inverse-primary 作为现在的 primary) */
+    --primary: #494bd7;
+    --primary-dim: #3536b3;
+    --primary-container: #e0e0ff;
+    --on-primary: #ffffff;
+    --on-primary-container: #00006e;
+    --inverse-primary: #c0c1ff;
+
+    /* Secondary Colors (次要色) */
+    --secondary: #5c5d62;
+    --secondary-dim: #444549;
+    --secondary-container: #e1e0e6;
+    --on-secondary: #ffffff;
+    --on-secondary-container: #18191d;
+
+    /* Tertiary Colors (第三色：冷灰蓝) */
+    --tertiary: #4e556f;
+    --tertiary-dim: #373e57;
+    --tertiary-container: #d2d9f8;
+    --on-tertiary: #ffffff;
+    --on-tertiary-container: #0a1228;
+
+    /* Error Colors (错误色：标准的M3浅色高警示红) */
+    --error: #ba1a1a;
+    --error-dim: #93000a;
+    --error-container: #ffdad6;
+    --on-error: #ffffff;
+    --on-error-container: #410002;
+
+    /* Outline Colors (轮廓/边框色) */
+    --outline: #757785;
+    --outline-variant: #c5c6d5;
+
+    /* Fixed Variant Colors (固定色：在M3规范中，这类颜色通常在深浅模式下保持一致，但我调整了对比度以适应白底) */
+    --primary-fixed: #e1e0ff;
+    --primary-fixed-dim: #c0c1ff;
+    --on-primary-fixed: #00006e;
+    --on-primary-fixed-variant: #2f2ebe;
+
+    --secondary-fixed: #e5e1e6;
+    --secondary-fixed-dim: #c9c5ca;
+    --on-secondary-fixed: #18191d;
+    --on-secondary-fixed-variant: #403f43;
+
+    --tertiary-fixed: #d2d9f8;
+    --tertiary-fixed-dim: #b4bcde;
+    --on-tertiary-fixed: #0a1228;
+    --on-tertiary-fixed-variant: #363d56;
+
+    /* Background Colors (背景色) */
+    --background: #fbfbff;
+    --on-background: #191a20;
+
+    /* Additional Functional Colors (功能色：大幅调暗以保证在浅色背景上的可读性) */
+    --success: #0f9d58;
+    --warning: #e65100;
+    --info: #1976d2;
+
+    /* Legacy compatibility tokens so older views still inherit the active variant theme */
+    --color-bg: var(--background);
+    --color-surface: var(--surface-container);
+    --color-surface-hover: var(--surface-container-high);
+    --color-border: var(--outline-variant);
+    --color-text-primary: var(--on-surface);
+    --color-text-secondary: var(--on-surface-variant);
+    --color-text-tertiary: var(--outline);
+    --color-accent: var(--primary);
+    --color-accent-hover: var(--primary-dim);
+    --color-primary: var(--primary);
+    --color-success: var(--success);
+    --color-warning: var(--warning);
+    --radius-card: 1rem;
+    --radius-input: 0.75rem;
+    --shadow-modal: 0 24px 48px -16px rgb(17 24 39 / 0.16);
+    --glass-panel-bg: rgb(255 255 255 / 0.94);
+    --glass-panel-border: rgb(197 198 213 / 0.9);
+
+    /* Typography (字体保持不变) */
+    --font-headline: "Quicksand", "Manrope", sans-serif;
+    --font-body: "Quicksand", "Inter", sans-serif;
+    --font-label: "Quicksand", "Inter", sans-serif;
+  }
+}
+
+:root[data-theme="light"] {
+  /* Surface Colors */
+  --surface: #fbfbff;
+  --surface-dim: #dedeeb;
+  --surface-bright: #fbfbff;
+  --surface-variant: #e1e2ec;
+  --surface-tint: #494bd7;
+
+  /* Container Colors */
+  --surface-container-lowest: #ffffff;
+  --surface-container-low: #f4f4fa;
+  --surface-container: #efeff5;
+  --surface-container-high: #e9e9f0;
+  --surface-container-highest: #e3e3eb;
+
+  /* Text & Content Colors */
+  --on-surface: #191a20;
+  --on-surface-variant: #444653;
+  --inverse-on-surface: #eff0f7;
+  --inverse-surface: #2e2f35;
+
+  /* Primary Colors */
+  --primary: #494bd7;
+  --primary-dim: #3536b3;
+  --primary-container: #e0e0ff;
+  --on-primary: #ffffff;
+  --on-primary-container: #00006e;
+  --inverse-primary: #c0c1ff;
+
+  /* Secondary Colors */
+  --secondary: #5c5d62;
+  --secondary-dim: #444549;
+  --secondary-container: #e1e0e6;
+  --on-secondary: #ffffff;
+  --on-secondary-container: #18191d;
+
+  /* Tertiary Colors */
+  --tertiary: #4e556f;
+  --tertiary-dim: #373e57;
+  --tertiary-container: #d2d9f8;
+  --on-tertiary: #ffffff;
+  --on-tertiary-container: #0a1228;
+
+  /* Error Colors */
+  --error: #ba1a1a;
+  --error-dim: #93000a;
+  --error-container: #ffdad6;
+  --on-error: #ffffff;
+  --on-error-container: #410002;
+
+  /* Outline Colors */
+  --outline: #757785;
+  --outline-variant: #c5c6d5;
+
+  /* Fixed Variant Colors */
+  --primary-fixed: #e1e0ff;
+  --primary-fixed-dim: #c0c1ff;
+  --on-primary-fixed: #00006e;
+  --on-primary-fixed-variant: #2f2ebe;
+  --secondary-fixed: #e5e1e6;
+  --secondary-fixed-dim: #c9c5ca;
+  --on-secondary-fixed: #18191d;
+  --on-secondary-fixed-variant: #403f43;
+  --tertiary-fixed: #d2d9f8;
+  --tertiary-fixed-dim: #b4bcde;
+  --on-tertiary-fixed: #0a1228;
+  --on-tertiary-fixed-variant: #363d56;
+
+  /* Background Colors */
+  --background: #fbfbff;
+  --on-background: #191a20;
+
+  /* Additional Functional Colors */
+  --success: #0f9d58;
+  --warning: #e65100;
+  --info: #1976d2;
+
+  /* Legacy compatibility tokens */
+  --color-bg: var(--background);
+  --color-surface: var(--surface-container);
+  --color-surface-hover: var(--surface-container-high);
+  --color-border: var(--outline-variant);
+  --color-text-primary: var(--on-surface);
+  --color-text-secondary: var(--on-surface-variant);
+  --color-text-tertiary: var(--outline);
+  --color-accent: var(--primary);
+  --color-accent-hover: var(--primary-dim);
+  --color-primary: var(--primary);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --radius-card: 1rem;
+  --radius-input: 0.75rem;
+  --shadow-modal: 0 24px 48px -16px rgb(17 24 39 / 0.16);
+  --glass-panel-bg: rgb(255 255 255 / 0.94);
+  --glass-panel-border: rgb(197 198 213 / 0.9);
+}
+
+:root[data-theme="dark"] {
+  /* Surface Colors */
+  --surface: #070e1d;
+  --surface-dim: #070e1d;
+  --surface-bright: #062a5f;
+  --surface-variant: #082450;
+  --surface-tint: #c0c1ff;
+
+  /* Container Colors */
+  --surface-container-lowest: #000000;
+  --surface-container-low: #081328;
+  --surface-container: #091935;
+  --surface-container-high: #091f42;
+  --surface-container-highest: #082450;
+
+  /* Text & Content Colors */
+  --on-surface: #dde5ff;
+  --on-surface-variant: #95abde;
+  --inverse-on-surface: #4e5566;
+  --inverse-surface: #f9f9ff;
+
+  /* Primary Colors */
+  --primary: #c0c1ff;
+  --primary-dim: #b0b2ff;
+  --primary-container: #2f2ebe;
+  --on-primary: #2724b8;
+  --on-primary-container: #ccccff;
+  --inverse-primary: #494bd7;
+
+  /* Secondary Colors */
+  --secondary: #9f9da1;
+  --secondary-dim: #9f9da1;
+  --secondary-container: #3c3b3f;
+  --on-secondary: #202023;
+  --on-secondary-container: #c1bec3;
+
+  /* Tertiary Colors */
+  --tertiary: #e3e7ff;
+  --tertiary-dim: #c4cbe9;
+  --tertiary-container: #d2d9f8;
+  --on-tertiary: #4d546e;
+  --on-tertiary-container: #444c65;
+
+  /* Error Colors */
+  --error: #ec7c8a;
+  --error-dim: #b95463;
+  --error-container: #7f2737;
+  --on-error: #490013;
+  --on-error-container: #ff97a3;
+
+  /* Outline Colors */
+  --outline: #5f75a5;
+  --outline-variant: #314774;
+
+  /* Fixed Variant Colors */
+  --primary-fixed: #e1e0ff;
+  --primary-fixed-dim: #d1d0ff;
+  --on-primary-fixed: #2622b7;
+  --on-primary-fixed-variant: #4647d3;
+  --secondary-fixed: #e5e1e6;
+  --secondary-fixed-dim: #d7d3d8;
+  --on-secondary-fixed: #403f43;
+  --on-secondary-fixed-variant: #5c5b5f;
+  --tertiary-fixed: #d2d9f8;
+  --tertiary-fixed-dim: #c4cbe9;
+  --on-tertiary-fixed: #323951;
+  --on-tertiary-fixed-variant: #4e556f;
+
+  /* Background Colors */
+  --background: #070e1d;
+  --on-background: #dde5ff;
+
+  /* Additional Functional Colors */
+  --success: #38d39f;
+  --warning: #ffb74d;
+  --info: #64b5f6;
+
+  /* Legacy compatibility tokens */
+  --color-bg: var(--background);
+  --color-surface: var(--surface-container);
+  --color-surface-hover: var(--surface-container-high);
+  --color-border: var(--outline-variant);
+  --color-text-primary: var(--on-surface);
+  --color-text-secondary: var(--on-surface-variant);
+  --color-text-tertiary: var(--outline);
+  --color-accent: var(--primary);
+  --color-accent-hover: var(--primary-dim);
+  --color-primary: var(--primary);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --radius-card: 1rem;
+  --radius-input: 0.75rem;
+  --shadow-modal: 0 24px 48px -16px rgb(0 0 0 / 0.35);
+  --glass-panel-bg: rgb(9 25 53 / 0.84);
+  --glass-panel-border: rgb(95 117 165 / 0.18);
+}

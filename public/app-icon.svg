@@ -1,0 +1,46 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGrad" x1="176" y1="96" x2="848" y2="928" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#7280FF"/>
+      <stop offset="52%" stop-color="#5A57EA"/>
+      <stop offset="100%" stop-color="#3F2EB8"/>
+    </linearGradient>
+    <linearGradient id="glowGrad" x1="232" y1="140" x2="766" y2="628" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.24"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="archGrad" x1="303" y1="126" x2="691" y2="720" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#6673FF"/>
+      <stop offset="60%" stop-color="#554DE1"/>
+      <stop offset="100%" stop-color="#4B39D6"/>
+    </linearGradient>
+    <linearGradient id="beamGrad" x1="484" y1="288" x2="596" y2="532" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#EEF1FF"/>
+      <stop offset="100%" stop-color="#C7CEF9"/>
+    </linearGradient>
+    <linearGradient id="innerGrad" x1="551" y1="353" x2="551" y2="778" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#313599"/>
+      <stop offset="100%" stop-color="#10174A"/>
+    </linearGradient>
+    <clipPath id="tileClip">
+      <rect x="72" y="72" width="880" height="880" rx="196"/>
+    </clipPath>
+    <clipPath id="archClip">
+      <path d="M303 713V360C303 228.556 409.556 122 541 122H592C723.444 122 830 228.556 830 360V713C776 703 722 691 670 678C632 668 584 661 550 661C514 661 467 669 427 680C387 692 345 704 303 713Z"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#tileClip)">
+    <rect x="72" y="72" width="880" height="880" rx="196" fill="url(#bgGrad)"/>
+    <path d="M226 120H812C866 120 910 164 910 218V320C820 270 722 245 616 245C441 245 316 322 226 432V120Z" fill="url(#glowGrad)"/>
+    <g transform="translate(32 34) scale(0.92)">
+      <path d="M303 713V360C303 228.556 409.556 122 541 122H592C723.444 122 830 228.556 830 360V713C776 703 722 691 670 678C632 668 584 661 550 661C514 661 467 669 427 680C387 692 345 704 303 713Z" fill="url(#archGrad)"/>
+      <g clip-path="url(#archClip)">
+        <path d="M550 353C660 353 748 441 748 551V778H351V546C351 437 440 353 550 353Z" fill="url(#innerGrad)"/>
+        <path d="M550 353C660 353 748 441 748 551V778H714V551C714 460 641 387 550 387C459 387 385 460 385 551V778H351V546C351 437 440 353 550 353Z" fill="#1A1E6E" opacity="0.56"/>
+      </g>
+      <path d="M438 288H698V353H584V618L495 582V353H438V288Z" fill="url(#beamGrad)"/>
+      <path d="M650 289H698V340C680 347 664 350 650 351V289Z" fill="#FFFFFF" opacity="0.34"/>
+    </g>
+  </g>
+</svg>

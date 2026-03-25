@@ -1,0 +1,78 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform_name: darwin-aarch64
+            rust_target: aarch64-apple-darwin
+            bundle_glob: src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Verify version sync
+        run: npm run check:versions
+
+      - name: Build Tauri app
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_UPDATER_PUBKEY: ${{ secrets.TAURI_UPDATER_PUBKEY }}
+          TAURI_UPDATER_REPO_OWNER: ${{ github.repository_owner }}
+          TAURI_UPDATER_REPO_NAME: ${{ github.event.repository.name }}
+        run: npm run tauri build -- --target ${{ matrix.rust_target }}
+
+      - name: Prepare updater assets
+        env:
+          RELEASE_VERSION: ${{ github.event.release.tag_name }}
+          RELEASE_NOTES: ${{ github.event.release.body }}
+          RELEASE_PUBLISHED_AT: ${{ github.event.release.published_at }}
+          RELEASE_HTML_URL: ${{ github.event.release.html_url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          PLATFORM_NAME: ${{ matrix.platform_name }}
+          BUNDLE_GLOB: ${{ matrix.bundle_glob }}
+        run: |
+          BUNDLE_PATH=$(ls $BUNDLE_GLOB | head -n 1)
+          SIG_PATH="$BUNDLE_PATH.sig"
+          MANIFEST_PATH="updater-${PLATFORM_NAME}.json"
+          BUNDLE_NAME=$(basename "$BUNDLE_PATH")
+          DOWNLOAD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${BUNDLE_NAME}"
+          SIGNATURE=$(cat "$SIG_PATH")
+          export RELEASE_VERSION="${RELEASE_VERSION#v}"
+          export RELEASE_DOWNLOAD_URL="$DOWNLOAD_URL"
+          export RELEASE_SIGNATURE="$SIGNATURE"
+          export MANIFEST_OUTPUT_PATH="$MANIFEST_PATH"
+          export PLATFORM_KEY="$PLATFORM_NAME"
+          node ./scripts/generate-updater-manifest.mjs
+          echo "BUNDLE_PATH=$BUNDLE_PATH" >> "$GITHUB_ENV"
+          echo "SIG_PATH=$SIG_PATH" >> "$GITHUB_ENV"
+          echo "MANIFEST_PATH=$MANIFEST_PATH" >> "$GITHUB_ENV"
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" "$BUNDLE_PATH" "$SIG_PATH" "$MANIFEST_PATH" --clobber
