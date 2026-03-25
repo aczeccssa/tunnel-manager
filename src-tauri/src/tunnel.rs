@@ -285,7 +285,7 @@ pub fn get_ssh_binary_path() -> String {
 
 #[tauri::command]
 pub fn get_ssh_version() -> Result<String, String> {
-    let output = Command::new(&get_ssh_binary())
+    let output = Command::new(get_ssh_binary())
         .arg("-V")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -423,7 +423,7 @@ pub fn get_tunnel_status(
             Ok(TunnelStatus {
                 running: false,
                 pid: Some(pid),
-                exit_code: exit.code().map(|code| code as i32),
+                exit_code: exit.code(),
                 ready: false,
                 last_error,
                 stderr_tail,

@@ -1,6 +1,6 @@
 [package]
 name = "tunnel-manager"
-version = "1.0.0"
+version = "0.1.0"
 description = "SSH Tunnel Manager - A lightweight desktop app for managing SSH tunnels"
 authors = ["you"]
 edition = "2021"

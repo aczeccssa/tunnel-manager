@@ -455,10 +455,10 @@ pub fn run() {
                 let mut status = menu_bar_state.status.lock();
                 *status = "Idle".to_string();
             }
-            build_menu_bar(&app.handle())?;
-            set_menu_bar_visible(&app.handle(), true)?;
-            update_tray_title(&app.handle(), "Idle")?;
-            sync_dock_visibility(&app.handle(), app.state::<Arc<MenuBarState>>().inner())?;
+            build_menu_bar(app.handle())?;
+            set_menu_bar_visible(app.handle(), true)?;
+            update_tray_title(app.handle(), "Idle")?;
+            sync_dock_visibility(app.handle(), app.state::<Arc<MenuBarState>>().inner())?;
             Ok(())
         })
         .on_menu_event(|app, event| {
@@ -513,14 +513,14 @@ pub fn run() {
                         {
                             api.prevent_close();
                             if let Err(err) =
-                                hide_main_window_to_menu_bar(&app, menu_bar_state.inner())
+                                hide_main_window_to_menu_bar(app, menu_bar_state.inner())
                             {
                                 warn!("Failed to hide window to menu bar: {err}");
                             }
                         }
                     }
                     WindowEvent::Focused(true) if window.label() == MAIN_WINDOW_LABEL => {
-                        if let Err(err) = sync_dock_visibility(&app, menu_bar_state.inner()) {
+                        if let Err(err) = sync_dock_visibility(app, menu_bar_state.inner()) {
                             warn!("Failed to sync Dock visibility on focus: {err}");
                         }
                     }

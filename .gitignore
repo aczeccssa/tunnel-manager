@@ -8,12 +8,14 @@ pnpm-debug.log*
 lerna-debug.log*
 
 # Dependencies
-node_modules
+/node_modules
 
 # Build outputs
-dist
-dist-ssr
-release
+/dist
+/dist-ssr
+/release
+/.claude
+/.cargo
 
 # Tauri
 src-tauri/target

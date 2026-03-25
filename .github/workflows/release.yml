@@ -1,13 +1,56 @@
 name: Release
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
+  create_release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      release_tag: ${{ steps.meta.outputs.release_tag }}
+      release_version: ${{ steps.meta.outputs.release_version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve release metadata
+        id: meta
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            RELEASE_TAG="${GITHUB_REF_NAME}"
+          else
+            RELEASE_TAG="v$(node -p "require('./package.json').version")"
+          fi
+          echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "release_version=${RELEASE_TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure GitHub release exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.meta.outputs.release_tag }}
+        shell: bash
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists"
+          else
+            gh release create "$RELEASE_TAG" \
+              --title "$RELEASE_TAG" \
+              --generate-notes \
+              --latest
+          fi
+
   build:
-    runs-on: macos-14
+    needs: create_release
     permissions:
       contents: write
     strategy:
@@ -15,8 +58,37 @@ jobs:
       matrix:
         include:
           - platform_name: darwin-aarch64
+            runner: macos-14
             rust_target: aarch64-apple-darwin
+            bundle_target: app
             bundle_glob: src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz
+          - platform_name: darwin-x86_64
+            runner: macos-15-intel
+            rust_target: x86_64-apple-darwin
+            bundle_target: app
+            bundle_glob: src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz
+          - platform_name: linux-aarch64
+            runner: ubuntu-24.04-arm
+            rust_target: aarch64-unknown-linux-gnu
+            bundle_target: appimage
+            bundle_glob: src-tauri/target/aarch64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
+          - platform_name: linux-x86_64
+            runner: ubuntu-24.04
+            rust_target: x86_64-unknown-linux-gnu
+            bundle_target: appimage
+            bundle_glob: src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
+          - platform_name: windows-aarch64
+            runner: windows-11-arm
+            rust_target: aarch64-pc-windows-msvc
+            bundle_target: msi
+            bundle_glob: src-tauri/target/aarch64-pc-windows-msvc/release/bundle/msi/*.msi
+          - platform_name: windows-x86_64
+            runner: windows-latest
+            rust_target: x86_64-pc-windows-msvc
+            bundle_target: msi
+            bundle_glob: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+
+    runs-on: ${{ matrix.runner }}
 
     steps:
       - uses: actions/checkout@v4
@@ -29,42 +101,57 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.rust_target }}
+          components: rustfmt, clippy
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
 
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Verify version sync
-        run: npm run check:versions
+      - name: Run full verification gate
+        run: npm run verify
 
-      - name: Build Tauri app
+      - name: Build Tauri release bundle
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           TAURI_UPDATER_PUBKEY: ${{ secrets.TAURI_UPDATER_PUBKEY }}
           TAURI_UPDATER_REPO_OWNER: ${{ github.repository_owner }}
           TAURI_UPDATER_REPO_NAME: ${{ github.event.repository.name }}
-        run: npm run tauri build -- --target ${{ matrix.rust_target }}
+        run: npm run tauri build -- --target ${{ matrix.rust_target }} --bundles ${{ matrix.bundle_target }}
 
-      - name: Prepare updater assets
+      - name: Prepare updater manifest
+        shell: bash
         env:
-          RELEASE_VERSION: ${{ github.event.release.tag_name }}
-          RELEASE_NOTES: ${{ github.event.release.body }}
-          RELEASE_PUBLISHED_AT: ${{ github.event.release.published_at }}
-          RELEASE_HTML_URL: ${{ github.event.release.html_url }}
+          RELEASE_VERSION: ${{ needs.create_release.outputs.release_version }}
+          RELEASE_HTML_URL: https://github.com/${{ github.repository }}/releases/tag/${{ needs.create_release.outputs.release_tag }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TAG: ${{ needs.create_release.outputs.release_tag }}
           PLATFORM_NAME: ${{ matrix.platform_name }}
           BUNDLE_GLOB: ${{ matrix.bundle_glob }}
         run: |
+          export RELEASE_PUBLISHED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           BUNDLE_PATH=$(ls $BUNDLE_GLOB | head -n 1)
           SIG_PATH="$BUNDLE_PATH.sig"
           MANIFEST_PATH="updater-${PLATFORM_NAME}.json"
           BUNDLE_NAME=$(basename "$BUNDLE_PATH")
           DOWNLOAD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${BUNDLE_NAME}"
-          SIGNATURE=$(cat "$SIG_PATH")
-          export RELEASE_VERSION="${RELEASE_VERSION#v}"
           export RELEASE_DOWNLOAD_URL="$DOWNLOAD_URL"
-          export RELEASE_SIGNATURE="$SIGNATURE"
+          export RELEASE_SIGNATURE="$(cat "$SIG_PATH")"
           export MANIFEST_OUTPUT_PATH="$MANIFEST_PATH"
           export PLATFORM_KEY="$PLATFORM_NAME"
           node ./scripts/generate-updater-manifest.mjs
@@ -75,4 +162,5 @@ jobs:
       - name: Upload release assets
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ github.event.release.tag_name }}" "$BUNDLE_PATH" "$SIG_PATH" "$MANIFEST_PATH" --clobber
+          RELEASE_TAG: ${{ needs.create_release.outputs.release_tag }}
+        run: gh release upload "$RELEASE_TAG" "$BUNDLE_PATH" "$SIG_PATH" "$MANIFEST_PATH" --clobber

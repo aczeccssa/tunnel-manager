@@ -1,12 +1,20 @@
 {
   "name": "tunnel-manager",
   "private": true,
-  "version": "1.0.0",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "typecheck": "tsc --noEmit",
     "check:versions": "node ./scripts/check-version-sync.mjs",
+    "check:rust": "cargo check --manifest-path src-tauri/Cargo.toml",
+    "check:rust:fmt": "cargo fmt --all --manifest-path src-tauri/Cargo.toml -- --check",
+    "check:rust:clippy": "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings",
+    "verify": "npm run check:versions && npm run typecheck && npm run build && npm run check:rust && npm run check:rust:fmt && npm run check:rust:clippy",
+    "ci:local": "npm run verify",
+    "hooks:install": "node ./scripts/setup-githooks.mjs",
+    "prepare": "npm run hooks:install",
     "preview": "vite preview",
     "tauri": "tauri"
   },

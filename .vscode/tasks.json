@@ -2,7 +2,7 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "测试",
+      "label": "Test",
       "type": "shell",
       "command": "cargo",
       "args": [
@@ -22,7 +22,7 @@
       }
     },
     {
-      "label": "编译",
+      "label": "Compile",
       "type": "shell",
       "command": "npm",
       "args": [
@@ -43,7 +43,7 @@
       }
     },
     {
-      "label": "开发运行",
+      "label": "Run Dev",
       "type": "shell",
       "command": "npm",
       "args": [
@@ -66,7 +66,7 @@
       }
     },
     {
-      "label": "Release 产出",
+      "label": "Release Build",
       "type": "shell",
       "command": "npm",
       "args": [
@@ -89,7 +89,7 @@
       }
     },
     {
-      "label": "Debug 产出",
+      "label": "Debug Build",
       "type": "shell",
       "command": "npm",
       "args": [
