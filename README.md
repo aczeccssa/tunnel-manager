@@ -13,7 +13,7 @@ This template should help get you started developing with Tauri, React and Types
 
 ## Docs
 
-- [Auto Update Setup](/Users/a/Documents/GitHub/Tools/tunnel-manager/docs/auto-update.md)
+- [Auto Update Setup](docs/auto-update.md)
 
 ## Recommended IDE Setup
 

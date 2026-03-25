@@ -41,9 +41,10 @@ const TRAY_PROFILE_STOP_PREFIX: &str = "tray-profile-stop";
 #[cfg(target_os = "macos")]
 const MENU_BAR_PROFILE_ACTION_EVENT: &str = "menu-bar-profile-action";
 
-#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 enum CloseAction {
+    #[default]
     HideToMenuBar,
     Quit,
 }
@@ -55,12 +56,6 @@ struct MenuBarState {
     status: Mutex<String>,
     profiles: Mutex<Vec<MenuBarProfile>>,
     quitting: AtomicBool,
-}
-
-impl Default for CloseAction {
-    fn default() -> Self {
-        Self::HideToMenuBar
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
