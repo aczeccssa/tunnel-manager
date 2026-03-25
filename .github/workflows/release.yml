@@ -60,54 +60,12 @@ jobs:
       - name: Require successful CI for tagged commit
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
           HEAD_SHA: ${{ github.sha }}
+          VERIFY_CI_MAX_ATTEMPTS: "6"
+          VERIFY_CI_DELAY_SECONDS: "15"
         shell: bash
-        run: |
-          python3 - <<'PY'
-          import json
-          import os
-          import subprocess
-          import sys
-
-          head_sha = os.environ["HEAD_SHA"]
-          result = subprocess.run(
-              [
-                  "gh",
-                  "run",
-                  "list",
-                  "--workflow",
-                  "CI",
-                  "--commit",
-                  head_sha,
-                  "--json",
-                  "databaseId,status,conclusion,url,headSha",
-                  "--limit",
-                  "10",
-              ],
-              check=True,
-              capture_output=True,
-              text=True,
-          )
-          runs = json.loads(result.stdout)
-          completed = [
-              run for run in runs
-              if run["headSha"] == head_sha and run["status"] == "completed"
-          ]
-
-          if not completed:
-              print(f"No completed CI run found for commit {head_sha}.")
-              print("Push the commit first and wait for the CI workflow to finish successfully before tagging.")
-              sys.exit(1)
-
-          latest = completed[0]
-          if latest["conclusion"] != "success":
-              print(f"CI gate is not green for commit {head_sha}.")
-              print(f"Run URL: {latest['url']}")
-              print(f"Conclusion: {latest['conclusion']}")
-              sys.exit(1)
-
-          print(f"Using CI gate: {latest['url']}")
-          PY
+        run: node ./scripts/verify-release-ci.mjs
 
   build:
     needs:
