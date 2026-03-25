@@ -150,34 +150,46 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           TAURI_UPDATER_PUBKEY: ${{ secrets.TAURI_UPDATER_PUBKEY }}
         run: |
-          if [[ -z "${TAURI_SIGNING_PRIVATE_KEY}" ]]; then
-            echo "Missing required secret: TAURI_SIGNING_PRIVATE_KEY" >&2
-            exit 1
-          fi
+          node <<'EOF'
+          const required = [
+            "TAURI_SIGNING_PRIVATE_KEY",
+            "TAURI_SIGNING_PRIVATE_KEY_PASSWORD",
+            "TAURI_UPDATER_PUBKEY",
+          ];
 
-          if [[ -z "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD}" ]]; then
-            echo "Missing required secret: TAURI_SIGNING_PRIVATE_KEY_PASSWORD" >&2
-            exit 1
-          fi
+          for (const name of required) {
+            const value = process.env[name];
+            if (!value || !value.trim()) {
+              console.error(`Missing required secret: ${name}`);
+              process.exit(1);
+            }
+          }
 
-          if [[ -z "${TAURI_UPDATER_PUBKEY}" ]]; then
-            echo "Missing required secret: TAURI_UPDATER_PUBKEY" >&2
-            exit 1
-          fi
+          const validateKey = (name, value, expectedPrefix) => {
+            const trimmed = value.trim();
+            const plainText = trimmed.startsWith("untrusted comment:")
+              ? trimmed
+              : Buffer.from(trimmed, "base64").toString("utf8");
+            const firstLine = plainText.split(/\r?\n/, 1)[0];
 
-          first_line="$(printf '%s\n' "${TAURI_SIGNING_PRIVATE_KEY}" | head -n 1)"
-          if [[ "${first_line}" != untrusted\ comment:* ]]; then
-            echo "TAURI_SIGNING_PRIVATE_KEY is not a complete Tauri updater secret key." >&2
-            echo "Expected the first line to start with 'untrusted comment:'." >&2
-            exit 1
-          fi
+            if (!firstLine.startsWith(expectedPrefix)) {
+              console.error(`${name} is not a complete Tauri updater key.`);
+              console.error(`Expected decoded content to start with '${expectedPrefix}'.`);
+              process.exit(1);
+            }
+          };
 
-          pubkey_first_line="$(printf '%s\n' "${TAURI_UPDATER_PUBKEY}" | head -n 1)"
-          if [[ "${pubkey_first_line}" != untrusted\ comment:* ]]; then
-            echo "TAURI_UPDATER_PUBKEY is not a complete Tauri updater public key." >&2
-            echo "Expected the first line to start with 'untrusted comment:'." >&2
-            exit 1
-          fi
+          validateKey(
+            "TAURI_SIGNING_PRIVATE_KEY",
+            process.env.TAURI_SIGNING_PRIVATE_KEY,
+            "untrusted comment: rsign encrypted secret key",
+          );
+          validateKey(
+            "TAURI_UPDATER_PUBKEY",
+            process.env.TAURI_UPDATER_PUBKEY,
+            "untrusted comment: minisign public key",
+          );
+          EOF
 
       - name: Build Tauri release bundle
         env:
