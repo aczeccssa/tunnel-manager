@@ -219,6 +219,21 @@ jobs:
           process.stdout.write("\n__EOF__\n");
           EOF
 
+      - name: Inject updater pubkey into tauri config
+        shell: bash
+        env:
+          NORMALIZED_TAURI_UPDATER_PUBKEY: ${{ env.NORMALIZED_TAURI_UPDATER_PUBKEY }}
+        run: |
+          node <<'EOF'
+          const fs = require("node:fs");
+          const path = "src-tauri/tauri.conf.json";
+          const config = JSON.parse(fs.readFileSync(path, "utf8"));
+          config.plugins ??= {};
+          config.plugins.updater ??= {};
+          config.plugins.updater.pubkey = process.env.NORMALIZED_TAURI_UPDATER_PUBKEY;
+          fs.writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
+          EOF
+
       - name: Build Tauri release bundle
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
