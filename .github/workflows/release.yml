@@ -211,8 +211,8 @@ jobs:
           const raw = process.env.RAW_TAURI_UPDATER_PUBKEY ?? "";
           const trimmed = raw.trim();
           const normalized = trimmed.startsWith("untrusted comment:")
-            ? trimmed
-            : Buffer.from(trimmed, "base64").toString("utf8").trim();
+            ? Buffer.from(trimmed, "utf8").toString("base64")
+            : trimmed;
 
           process.stdout.write("NORMALIZED_TAURI_UPDATER_PUBKEY<<__EOF__\n");
           process.stdout.write(normalized);
