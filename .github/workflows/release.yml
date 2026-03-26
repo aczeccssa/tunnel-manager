@@ -134,6 +134,7 @@ jobs:
             curl \
             wget \
             file \
+            xdg-utils \
             libxdo-dev \
             libssl-dev \
             libayatana-appindicator3-dev \
@@ -151,6 +152,19 @@ jobs:
           TAURI_UPDATER_PUBKEY: ${{ secrets.TAURI_UPDATER_PUBKEY }}
         run: |
           node <<'EOF'
+          const decodeMaybeBase64 = (value) => {
+            const trimmed = value.trim();
+            if (trimmed.startsWith("untrusted comment:")) {
+              return trimmed;
+            }
+
+            try {
+              return Buffer.from(trimmed, "base64").toString("utf8").trim();
+            } catch {
+              return trimmed;
+            }
+          };
+
           const required = [
             "TAURI_SIGNING_PRIVATE_KEY",
             "TAURI_SIGNING_PRIVATE_KEY_PASSWORD",
@@ -166,10 +180,7 @@ jobs:
           }
 
           const validateKey = (name, value, expectedPrefix) => {
-            const trimmed = value.trim();
-            const plainText = trimmed.startsWith("untrusted comment:")
-              ? trimmed
-              : Buffer.from(trimmed, "base64").toString("utf8");
+            const plainText = decodeMaybeBase64(value);
             const firstLine = plainText.split(/\r?\n/, 1)[0];
 
             if (!firstLine.startsWith(expectedPrefix)) {
@@ -191,11 +202,28 @@ jobs:
           );
           EOF
 
+      - name: Normalize updater pubkey
+        shell: bash
+        env:
+          RAW_TAURI_UPDATER_PUBKEY: ${{ secrets.TAURI_UPDATER_PUBKEY }}
+        run: |
+          node <<'EOF' >> "$GITHUB_ENV"
+          const raw = process.env.RAW_TAURI_UPDATER_PUBKEY ?? "";
+          const trimmed = raw.trim();
+          const normalized = trimmed.startsWith("untrusted comment:")
+            ? trimmed
+            : Buffer.from(trimmed, "base64").toString("utf8").trim();
+
+          process.stdout.write("NORMALIZED_TAURI_UPDATER_PUBKEY<<__EOF__\n");
+          process.stdout.write(normalized);
+          process.stdout.write("\n__EOF__\n");
+          EOF
+
       - name: Build Tauri release bundle
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          TAURI_UPDATER_PUBKEY: ${{ secrets.TAURI_UPDATER_PUBKEY }}
+          TAURI_UPDATER_PUBKEY: ${{ env.NORMALIZED_TAURI_UPDATER_PUBKEY }}
           TAURI_UPDATER_REPO_OWNER: ${{ github.repository_owner }}
           TAURI_UPDATER_REPO_NAME: ${{ github.event.repository.name }}
         run: npm run tauri build -- --target ${{ matrix.rust_target }} --bundles ${{ matrix.bundle_target }}

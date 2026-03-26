@@ -263,15 +263,6 @@ fn emit_menu_bar_profile_action(
         .map_err(|e| e.to_string())
 }
 
-#[cfg(not(target_os = "macos"))]
-fn emit_menu_bar_profile_action(
-    _app: &AppHandle,
-    _profile_id: String,
-    _action: &str,
-) -> Result<(), String> {
-    Ok(())
-}
-
 #[cfg(target_os = "macos")]
 fn build_menu_bar(app: &AppHandle) -> Result<(), String> {
     let menu = build_menu_bar_menu(app, "Idle")?;
