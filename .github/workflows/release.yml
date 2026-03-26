@@ -82,33 +82,39 @@ jobs:
           - platform_name: darwin-aarch64
             runner: macos-14
             rust_target: aarch64-apple-darwin
-            bundle_target: app
+            bundle_target: app,dmg
             bundle_glob: src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz
+            extra_asset_glob: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
           - platform_name: darwin-x86_64
             runner: macos-15-intel
             rust_target: x86_64-apple-darwin
-            bundle_target: app
+            bundle_target: app,dmg
             bundle_glob: src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz
+            extra_asset_glob: src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
           - platform_name: linux-aarch64
             runner: ubuntu-24.04-arm
             rust_target: aarch64-unknown-linux-gnu
             bundle_target: appimage
             bundle_glob: src-tauri/target/aarch64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
+            extra_asset_glob: ""
           - platform_name: linux-x86_64
             runner: ubuntu-24.04
             rust_target: x86_64-unknown-linux-gnu
             bundle_target: appimage
             bundle_glob: src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
+            extra_asset_glob: ""
           - platform_name: windows-aarch64
             runner: windows-11-arm
             rust_target: aarch64-pc-windows-msvc
             bundle_target: msi
             bundle_glob: src-tauri/target/aarch64-pc-windows-msvc/release/bundle/msi/*.msi
+            extra_asset_glob: ""
           - platform_name: windows-x86_64
             runner: windows-latest
             rust_target: x86_64-pc-windows-msvc
             bundle_target: msi
             bundle_glob: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+            extra_asset_glob: ""
 
     runs-on: ${{ matrix.runner }}
 
@@ -252,6 +258,7 @@ jobs:
           RELEASE_TAG: ${{ needs.create_release.outputs.release_tag }}
           PLATFORM_NAME: ${{ matrix.platform_name }}
           BUNDLE_GLOB: ${{ matrix.bundle_glob }}
+          EXTRA_ASSET_GLOB: ${{ matrix.extra_asset_glob }}
         run: |
           export RELEASE_PUBLISHED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           BUNDLE_PATH=$(ls $BUNDLE_GLOB | head -n 1)
@@ -267,9 +274,19 @@ jobs:
           echo "BUNDLE_PATH=$BUNDLE_PATH" >> "$GITHUB_ENV"
           echo "SIG_PATH=$SIG_PATH" >> "$GITHUB_ENV"
           echo "MANIFEST_PATH=$MANIFEST_PATH" >> "$GITHUB_ENV"
+          if [[ -n "${EXTRA_ASSET_GLOB}" ]]; then
+            EXTRA_ASSET_PATH=$(ls $EXTRA_ASSET_GLOB | head -n 1)
+            echo "EXTRA_ASSET_PATH=$EXTRA_ASSET_PATH" >> "$GITHUB_ENV"
+          fi
 
       - name: Upload release assets
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.create_release.outputs.release_tag }}
-        run: gh release upload "$RELEASE_TAG" "$BUNDLE_PATH" "$SIG_PATH" "$MANIFEST_PATH" --clobber
+        run: |
+          assets=("$BUNDLE_PATH" "$SIG_PATH" "$MANIFEST_PATH")
+          if [[ -n "${EXTRA_ASSET_PATH:-}" ]]; then
+            assets+=("$EXTRA_ASSET_PATH")
+          fi
+          gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
