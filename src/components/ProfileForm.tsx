@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Modal } from "./ui";
+import { Modal, useToastStore } from "./ui";
 import type { TunnelProfile, ProfileFormData } from "../types";
 import { DEFAULT_FORM_DATA } from "../types";
 
@@ -54,12 +54,46 @@ interface ProfileFormProps {
   open: boolean;
   onClose: () => void;
   onSave: (profile: ProfileFormData) => void;
+  onPasteConfig?: (rawText?: string) => Promise<ProfileFormData>;
   initialData?: TunnelProfile;
 }
 
-export function ProfileForm({ open, onClose, onSave, initialData }: ProfileFormProps) {
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function highlightJson(value: string) {
+  return escapeHtml(value).replace(
+    /"(?:\\.|[^"\\])*"(?=\s*:)?|-?\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b|\btrue\b|\bfalse\b|\bnull\b/g,
+    (token: string) => {
+      if (token === "true" || token === "false") {
+        return `<span class="text-warning">${token}</span>`;
+      }
+      if (token === "null") {
+        return `<span class="text-on-surface-variant">${token}</span>`;
+      }
+      if (token.startsWith("\"")) {
+        return /:$/.test(token)
+          ? `<span class="text-primary">${token}</span>`
+          : `<span class="text-secondary">${token}</span>`;
+      }
+      return `<span class="text-primary-container">${token}</span>`;
+    }
+  );
+}
+
+export function ProfileForm({ open, onClose, onSave, onPasteConfig, initialData }: ProfileFormProps) {
   const isEditing = !!initialData;
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [pastingFromClipboard, setPastingFromClipboard] = useState(false);
+  const [manualPasteOpen, setManualPasteOpen] = useState(false);
+  const [manualPasteValue, setManualPasteValue] = useState("");
+  const [manualPasteError, setManualPasteError] = useState<string | null>(null);
+  const [confirmingManualPaste, setConfirmingManualPaste] = useState(false);
+  const { add: addToast } = useToastStore();
 
   const form = useForm<TunnelFormValues>({
     resolver: zodResolver(tunnelSchema),
@@ -122,6 +156,15 @@ export function ProfileForm({ open, onClose, onSave, initialData }: ProfileFormP
     }
   }, [open, initialData, form]);
 
+  useEffect(() => {
+    if (!open) {
+      setManualPasteOpen(false);
+      setManualPasteValue("");
+      setManualPasteError(null);
+      setConfirmingManualPaste(false);
+    }
+  }, [open]);
+
   const handleSubmit = (values: TunnelFormValues) => {
     onSave({
       ...values,
@@ -140,11 +183,57 @@ export function ProfileForm({ open, onClose, onSave, initialData }: ProfileFormP
     onClose();
   };
 
+  const handlePasteIntoForm = async () => {
+    if (!onPasteConfig) {
+      return;
+    }
+
+    setPastingFromClipboard(true);
+    try {
+      const nextValues = await onPasteConfig();
+      form.reset(nextValues);
+      addToast({ message: "Clipboard config loaded into the form. Review and save when ready.", type: "success" });
+    } catch (error) {
+      let clipboardText = "";
+      try {
+        clipboardText = await navigator.clipboard.readText();
+      } catch {
+        clipboardText = "";
+      }
+      setManualPasteValue(clipboardText);
+      setManualPasteError(null);
+      setManualPasteOpen(true);
+    } finally {
+      setPastingFromClipboard(false);
+    }
+  };
+
+  const handleConfirmManualPaste = async () => {
+    if (!onPasteConfig) {
+      return;
+    }
+
+    setConfirmingManualPaste(true);
+    try {
+      const nextValues = await onPasteConfig(manualPasteValue);
+      form.reset(nextValues);
+      setManualPasteOpen(false);
+      setManualPasteError(null);
+      addToast({ message: "JSON config loaded into the form. Review and save when ready.", type: "success" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setManualPasteError(message);
+    } finally {
+      setConfirmingManualPaste(false);
+    }
+  };
+
   const watchMode = form.watch("mode");
   const watchAuthType = form.watch("authType");
 
   return (
     <Modal open={open} onClose={onClose} size="xl" showClose={false}>
+      <>
       <form onSubmit={form.handleSubmit(handleSubmit)} className="flex flex-col h-full max-h-[90vh]">
         {/* Modal Header */}
         <header className="px-8 py-6 flex items-center justify-between border-b border-outline-variant/40 bg-surface-container-highest/30 shrink-0">
@@ -488,22 +577,106 @@ export function ProfileForm({ open, onClose, onSave, initialData }: ProfileFormP
         </div>
 
         {/* Modal Footer */}
-        <footer className="px-8 py-6 bg-surface-container-low/50 flex items-center justify-end gap-4 border-t border-outline-variant/40 shrink-0">
-          <button 
-            type="button"
-            onClick={onClose}
-            className="px-6 py-2.5 rounded-md text-on-surface-variant font-medium hover:bg-surface-container-highest transition-all active:scale-95"
-          >
-            Cancel
-          </button>
-          <button 
-            type="submit"
-            className="px-8 py-2.5 rounded-md bg-gradient-to-br from-primary to-primary-container text-on-primary font-semibold shadow-lg shadow-primary/20 hover:brightness-110 transition-all active:scale-95"
-          >
-            {isEditing ? "Save Changes" : "Save Profile"}
-          </button>
+        <footer className="px-8 py-6 bg-surface-container-low/50 flex items-center justify-between gap-4 border-t border-outline-variant/40 shrink-0">
+          <div className="flex items-center">
+            {!isEditing && onPasteConfig && (
+              <button
+                type="button"
+                onClick={() => void handlePasteIntoForm()}
+                disabled={pastingFromClipboard}
+                className="w-11 h-11 rounded-full bg-surface-container-highest text-on-surface-variant hover:text-on-surface hover:bg-surface-bright transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                title="Paste copied profile config into this form"
+              >
+                <span className="material-symbols-outlined text-[22px]">content_paste</span>
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-4">
+            <button 
+              type="button"
+              onClick={onClose}
+              className="px-6 py-2.5 rounded-md text-on-surface-variant font-medium hover:bg-surface-container-highest transition-all active:scale-95"
+            >
+              Cancel
+            </button>
+            <button 
+              type="submit"
+              className="px-8 py-2.5 rounded-md bg-gradient-to-br from-primary to-primary-container text-on-primary font-semibold shadow-lg shadow-primary/20 hover:brightness-110 transition-all active:scale-95"
+            >
+              {isEditing ? "Save Changes" : "Save Profile"}
+            </button>
+          </div>
         </footer>
       </form>
+      <Modal
+        open={manualPasteOpen}
+        onClose={() => setManualPasteOpen(false)}
+        size="lg"
+        title="Import Profile JSON"
+      >
+        <div className="flex flex-col max-h-[85vh]">
+          <div className="flex-1 overflow-y-auto p-6 space-y-5">
+            <div className="space-y-2">
+              <p className="text-sm text-on-surface-variant leading-6">
+                Automatic clipboard paste was unavailable or the content did not match. Paste the profile JSON here, then confirm to fill the form.
+              </p>
+              {manualPasteError && (
+                <div className="rounded-md border border-error/30 bg-error/10 px-4 py-3 text-sm text-error">
+                  {manualPasteError}
+                </div>
+              )}
+            </div>
+
+            <section className="space-y-3">
+              <label className="text-on-surface-variant text-[13px] font-medium px-1">JSON Input</label>
+              <textarea
+                value={manualPasteValue}
+                onChange={(event) => {
+                  setManualPasteValue(event.target.value);
+                  if (manualPasteError) {
+                    setManualPasteError(null);
+                  }
+                }}
+                spellCheck={false}
+                placeholder='{"kind":"tunnel-manager/profile-config","version":1,"profile":{...}}'
+                className="min-h-[220px] w-full resize-y rounded-md bg-surface-container-highest px-4 py-3 font-mono text-sm text-on-surface outline-none transition-all placeholder:text-on-surface-variant/40 focus:ring-2 focus:ring-primary/30"
+              />
+            </section>
+
+            <section className="space-y-3">
+              <label className="text-on-surface-variant text-[13px] font-medium px-1">Syntax Highlight</label>
+              <pre className="min-h-[220px] overflow-auto rounded-md bg-surface-container-highest px-4 py-3 font-mono text-sm leading-6 text-on-surface">
+                <code
+                  dangerouslySetInnerHTML={{
+                    __html: manualPasteValue
+                      ? highlightJson(manualPasteValue)
+                      : '<span class="text-on-surface-variant/60">{ ... }</span>',
+                  }}
+                />
+              </pre>
+            </section>
+          </div>
+
+          <footer className="px-6 py-5 border-t border-outline-variant/40 bg-surface-container-low/50 flex items-center justify-end gap-4">
+            <button
+              type="button"
+              onClick={() => setManualPasteOpen(false)}
+              className="px-6 py-2.5 rounded-md text-on-surface-variant font-medium hover:bg-surface-container-highest transition-all active:scale-95"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleConfirmManualPaste()}
+              disabled={confirmingManualPaste || !manualPasteValue.trim()}
+              className="px-8 py-2.5 rounded-md bg-gradient-to-br from-primary to-primary-container text-on-primary font-semibold shadow-lg shadow-primary/20 hover:brightness-110 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {confirmingManualPaste ? "Importing..." : "Confirm"}
+            </button>
+          </footer>
+        </div>
+      </Modal>
+      </>
     </Modal>
   );
 }

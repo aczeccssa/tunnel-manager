@@ -390,6 +390,9 @@ export function SettingsPage({
               Profiles are stored locally in your app data directory. Sensitive information (passwords,
               passphrases) is stored in the macOS Keychain.
             </p>
+            <p className="text-sm text-on-surface-variant leading-6">
+              Copied and pasted profiles copy configuration only. Saved credentials are not carried over.
+            </p>
           </div>
         </SettingsSection>
 

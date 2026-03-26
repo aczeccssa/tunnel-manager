@@ -22,6 +22,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
       - name: Resolve release metadata
         id: meta
         shell: bash
@@ -33,6 +37,11 @@ jobs:
           fi
           echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
           echo "release_version=${RELEASE_TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Validate source versions against release tag
+        env:
+          RELEASE_TAG: ${{ steps.meta.outputs.release_tag }}
+        run: node ./scripts/check-version-sync.mjs "$RELEASE_TAG"
 
       - name: Ensure GitHub release exists
         env:
@@ -149,6 +158,11 @@ jobs:
 
       - name: Install frontend dependencies
         run: npm ci
+
+      - name: Validate source versions against release tag
+        env:
+          RELEASE_TAG: ${{ needs.create_release.outputs.release_tag }}
+        run: node ./scripts/check-version-sync.mjs "$RELEASE_TAG"
 
       - name: Validate signing secrets early
         shell: bash

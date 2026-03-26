@@ -71,7 +71,13 @@ GitHub Actions `Release` workflow 依赖以下 secrets：
 npm run check:versions
 ```
 
-版本不一致时，release 前应先修正，再发版。
+如果需要校验某个 release tag 是否和源码版本一致，也可以直接运行：
+
+```bash
+node ./scripts/check-version-sync.mjs v1.0.1
+```
+
+版本不一致时，release workflow 会直接失败。
 
 ## 5. Workflow 做了什么
 
@@ -81,18 +87,14 @@ Release workflow 文件在：
 
 它会做这些事：
 
-1. 安装前端依赖
-2. 校验版本号同步
-3. 构建 Tauri macOS 包
+1. 解析 release tag/version
+2. 校验 `package.json`、`Cargo.toml`、`tauri.conf.json` 三者一致，且与 release tag 完全一致
+3. 构建 Tauri release 包
 4. 读取生成的安装包和 `.sig`
 5. 生成 updater manifest
 6. 把安装包、签名、manifest 上传到 GitHub Release
 
-当前首版默认只跑：
-
-- macOS Apple Silicon
-
-但结构已经按后续扩展 Windows / 其他平台预留。
+当前 workflow 已按 matrix 构建多平台桌面包，包含 macOS、Linux、Windows 的主流架构目标。
 
 ## 6. Release 资产命名约定
 
@@ -133,7 +135,7 @@ Rust 侧会在编译时读取这些环境变量：
 
 建议流程：
 
-1. 修改版本号
+1. 修改版本号，确保以下三个文件完全一致
 2. 运行：
 
 ```bash
@@ -142,16 +144,17 @@ npm run build
 ```
 
 3. 提交代码并推送
-4. 创建 tag，例如：
+4. 创建与源码版本完全一致的 tag，例如源码是 `1.0.1` 时：
 
 ```bash
 git tag v1.0.1
 git push origin v1.0.1
 ```
 
-5. 在 GitHub 创建对应 release
-6. 对于 Beta 版本，勾选 `This is a pre-release`
-7. 发布后等待 workflow 上传安装包、签名和 manifest
+5. release workflow 会再次校验 tag/version 一致性；不一致会直接失败
+6. 在 GitHub 创建对应 release
+7. 对于 Beta 版本，勾选 `This is a pre-release`
+8. 发布后等待 workflow 上传安装包、签名和 manifest
 
 ## 9. 如何验证自动更新真的可用
 
@@ -183,6 +186,7 @@ git push origin v1.0.1
 - 缺少 manifest 时，应用显示错误而不是静默失败
 - 缺少签名或签名不匹配时，安装失败且 app 不损坏
 - 用户关闭更新弹窗后，顶栏提示仍保留
+- release tag 与源码版本不一致时，workflow 在构建前失败
 
 ## 10. 现在还需要你做什么
 
@@ -195,7 +199,5 @@ git push origin v1.0.1
 
 ## 11. 已知限制
 
-- 当前 workflow 首版只构建 macOS Apple Silicon
-- Windows 还没有在 workflow 中真正启用
 - updater manifest 目前按平台分别上传，不是单个聚合 manifest
 - Release notes 目前只在应用里做纯文本/外链展示，没有富文本渲染

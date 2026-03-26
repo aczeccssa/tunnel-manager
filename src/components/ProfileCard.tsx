@@ -9,6 +9,7 @@ interface ProfileCardProps {
   onStop: () => void;
   onEdit: () => void;
   onDuplicate: () => void;
+  onCopyConfig: () => void;
   onDelete: () => void;
   onViewLogs: () => void;
   viewMode?: "list" | "grid";
@@ -22,6 +23,7 @@ export function ProfileCard({
   onStop,
   onEdit,
   onDuplicate,
+  onCopyConfig,
   onDelete,
   onViewLogs,
   viewMode = "list",
@@ -162,7 +164,8 @@ export function ProfileCard({
               <>
                 <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setMenuOpen(false); }} />
                 <div className="absolute right-0 bottom-0 z-20 bg-surface-container-highest border border-outline-variant/40 rounded-xl shadow-[0_24px_40px_-12px_rgba(0,0,0,0.45)] py-1.5 min-w-[180px] overflow-hidden backdrop-blur-xl">
-                  <MenuItem icon="content_copy" label="Duplicate" onClick={() => { onDuplicate(); setMenuOpen(false); }} />
+                  <MenuItem icon="copy_all" label="Duplicate" onClick={() => { onDuplicate(); setMenuOpen(false); }} />
+                  <MenuItem icon="content_copy" label="Copy Config" onClick={() => { onCopyConfig(); setMenuOpen(false); }} />
                   <MenuItem icon="edit" label="Edit" onClick={() => { onEdit(); setMenuOpen(false); }} />
                   <MenuItem icon="terminal" label="Logs" onClick={() => { onViewLogs(); setMenuOpen(false); }} />
                   <div className="h-px bg-outline-variant/40 my-1 mx-2" />

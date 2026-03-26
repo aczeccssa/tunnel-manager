@@ -12,6 +12,7 @@ import { useTunnelPolling } from "./hooks/useTunnelPolling";
 import { useTheme } from "./hooks/useTheme";
 import { useAppUpdater } from "./hooks/useAppUpdater";
 import { platform } from "@tauri-apps/plugin-os";
+import { z } from "zod";
 import { STATUS_LABELS } from "./types";
 import type { MenuBarStatus, TunnelProfile, ProfileFormData } from "./types";
 import appLogo from "./assets/app-logo.svg";
@@ -20,6 +21,51 @@ const isMacOS = platform() === "macos";
 const isDevBuild = import.meta.env.DEV;
 const MENU_BAR_PROFILE_ACTION_EVENT = "menu-bar-profile-action";
 const DEV_PASSWORD_CACHE_KEY = "tunnel-manager-dev-password-cache";
+const PROFILE_CLIPBOARD_KIND = "tunnel-manager/profile-config";
+const PROFILE_CLIPBOARD_VERSION = 1;
+
+const clipboardProfileSchema = z.object({
+  kind: z.literal(PROFILE_CLIPBOARD_KIND),
+  version: z.literal(PROFILE_CLIPBOARD_VERSION),
+  profile: z.object({
+    name: z.string().min(1),
+    notes: z.string().optional(),
+    websiteUrl: z.string().optional(),
+    iconType: z.enum(["custom", "generated"]).optional(),
+    iconPath: z.string().optional(),
+    generatedIconSeed: z.string().optional(),
+    sshHost: z.string().min(1),
+    sshPort: z.number().int().min(1).max(65535),
+    username: z.string().min(1),
+    authType: z.enum(["PASSWORD", "SSH_KEY"]),
+    rememberPassword: z.boolean().optional(),
+    privateKeyPath: z.string().optional(),
+    mode: z.enum(["LOCAL", "REMOTE", "DYNAMIC"]),
+    localBindHost: z.string().optional(),
+    localPort: z.number().int().min(1).max(65535).optional(),
+    remoteHost: z.string().optional(),
+    remotePort: z.number().int().min(1).max(65535).optional(),
+    remoteBindHost: z.string().optional(),
+    localTargetHost: z.string().optional(),
+    localTargetPort: z.number().int().min(1).max(65535).optional(),
+    autoReconnect: z.boolean().optional(),
+    openUrlAfterStart: z.boolean().optional(),
+  }),
+});
+
+type ClipboardProfilePayload = z.infer<typeof clipboardProfileSchema>;
+
+function resolveClipboardIconType(profile: ClipboardProfilePayload["profile"]): "custom" | "generated" {
+  if (profile.iconType) {
+    return profile.iconType;
+  }
+
+  if (profile.iconPath?.trim()) {
+    return "custom";
+  }
+
+  return "generated";
+}
 
 interface MenuBarProfileActionPayload {
   profileId: string;
@@ -59,6 +105,62 @@ function setDevPasswordCache(next: Record<string, string>) {
   }
 
   window.localStorage.setItem(DEV_PASSWORD_CACHE_KEY, JSON.stringify(next));
+}
+
+async function writeClipboardText(value: string) {
+  try {
+    await navigator.clipboard.writeText(value);
+    return;
+  } catch {
+    const el = document.createElement("textarea");
+    el.value = value;
+    document.body.appendChild(el);
+    el.select();
+    const copied = document.execCommand("copy");
+    document.body.removeChild(el);
+    if (!copied) {
+      throw new Error("Clipboard write is not available in this environment");
+    }
+  }
+}
+
+async function readClipboardText() {
+  if (!navigator.clipboard?.readText) {
+    throw new Error("Clipboard read is not available in this environment");
+  }
+
+  return navigator.clipboard.readText();
+}
+
+function buildClipboardPayload(profile: TunnelProfile): ClipboardProfilePayload {
+  return {
+    kind: PROFILE_CLIPBOARD_KIND,
+    version: PROFILE_CLIPBOARD_VERSION,
+    profile: {
+      name: profile.name,
+      notes: profile.notes,
+      websiteUrl: profile.websiteUrl,
+      iconType: profile.iconType,
+      iconPath: profile.iconPath,
+      generatedIconSeed: profile.generatedIconSeed,
+      sshHost: profile.sshHost,
+      sshPort: profile.sshPort,
+      username: profile.username,
+      authType: profile.authType,
+      rememberPassword: profile.rememberPassword,
+      privateKeyPath: profile.privateKeyPath,
+      mode: profile.mode,
+      localBindHost: profile.localBindHost,
+      localPort: profile.localPort,
+      remoteHost: profile.remoteHost,
+      remotePort: profile.remotePort,
+      remoteBindHost: profile.remoteBindHost,
+      localTargetHost: profile.localTargetHost,
+      localTargetPort: profile.localTargetPort,
+      autoReconnect: profile.autoReconnect,
+      openUrlAfterStart: profile.openUrlAfterStart,
+    },
+  };
 }
 
 function App() {
@@ -413,7 +515,6 @@ function App() {
         name: `${profile.name} (Copy)`,
         createdAt: now,
         updatedAt: now,
-        hasStoredPassword: false,
         lastStartedAt: undefined,
         lastStoppedAt: undefined,
       };
@@ -422,6 +523,66 @@ function App() {
     },
     [addProfile, addToast]
   );
+
+  const handleCopyConfig = useCallback(
+    async (profile: TunnelProfile) => {
+      try {
+        const payload = buildClipboardPayload(profile);
+        await writeClipboardText(JSON.stringify(payload));
+        addToast({ message: `Copied config for "${profile.name}"`, type: "success" });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        addToast({ message: `Failed to copy config: ${message}`, type: "error" });
+      }
+    },
+    [addToast]
+  );
+
+  const handleLoadClipboardConfig = useCallback(async (rawText?: string): Promise<ProfileFormData> => {
+    const raw = rawText ?? await readClipboardText();
+    let decoded: unknown;
+
+    try {
+      decoded = JSON.parse(raw);
+    } catch {
+      throw new Error("Clipboard does not contain a copied profile");
+    }
+
+    const parsed = clipboardProfileSchema.safeParse(decoded);
+
+    if (!parsed.success) {
+      throw new Error("Clipboard does not contain a copied profile");
+    }
+
+    const source = parsed.data.profile;
+    const iconType = resolveClipboardIconType(source);
+    return {
+      name: source.name,
+      notes: source.notes ?? "",
+      websiteUrl: source.websiteUrl ?? "",
+      iconType,
+      iconPath: source.iconPath ?? "",
+      sshHost: source.sshHost,
+      sshPort: source.sshPort,
+      username: source.username,
+      authType: source.authType,
+      rememberPassword: source.rememberPassword ?? true,
+      hasStoredPassword: false,
+      password: "",
+      privateKeyPath: source.privateKeyPath ?? "",
+      passphrase: "",
+      mode: source.mode,
+      localBindHost: source.localBindHost ?? "127.0.0.1",
+      localPort: source.localPort,
+      remoteHost: source.remoteHost ?? "",
+      remotePort: source.remotePort,
+      remoteBindHost: source.remoteBindHost ?? "",
+      localTargetHost: source.localTargetHost ?? "",
+      localTargetPort: source.localTargetPort,
+      autoReconnect: source.autoReconnect ?? false,
+      openUrlAfterStart: source.openUrlAfterStart ?? false,
+    };
+  }, []);
 
   const handleStart = useCallback(
     async (profile: TunnelProfile) => {
@@ -728,6 +889,7 @@ function App() {
             onEdit={handleEdit}
             onDelete={handleDelete}
             onDuplicate={handleDuplicate}
+            onCopyConfig={(profile) => void handleCopyConfig(profile)}
             onStart={handleStart}
             onStop={handleStop}
             onViewLogs={handleViewLogs}
@@ -765,6 +927,7 @@ function App() {
         open={formOpen}
         onClose={() => setFormOpen(false)}
         onSave={handleSave}
+        onPasteConfig={handleLoadClipboardConfig}
         initialData={editingProfile || undefined}
       />
 
