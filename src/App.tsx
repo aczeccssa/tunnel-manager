@@ -15,7 +15,6 @@ import { platform } from "@tauri-apps/plugin-os";
 import { z } from "zod";
 import { STATUS_LABELS } from "./types";
 import type { MenuBarStatus, TunnelProfile, ProfileFormData } from "./types";
-import appLogo from "./assets/app-logo.svg";
 
 const isMacOS = platform() === "macos";
 const isDevBuild = import.meta.env.DEV;
@@ -23,6 +22,9 @@ const MENU_BAR_PROFILE_ACTION_EVENT = "menu-bar-profile-action";
 const DEV_PASSWORD_CACHE_KEY = "tunnel-manager-dev-password-cache";
 const PROFILE_CLIPBOARD_KIND = "tunnel-manager/profile-config";
 const PROFILE_CLIPBOARD_VERSION = 1;
+const WINDOWS_SSH_HELP_URL =
+  "https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh_install_firstuse";
+const MAIN_WINDOW_NAVIGATION_EVENT = "main-window-navigation";
 
 const clipboardProfileSchema = z.object({
   kind: z.literal(PROFILE_CLIPBOARD_KIND),
@@ -54,6 +56,35 @@ const clipboardProfileSchema = z.object({
 });
 
 type ClipboardProfilePayload = z.infer<typeof clipboardProfileSchema>;
+
+function isMissingSshError(message: string) {
+  return (
+    message.includes("OpenSSH Client is not installed") ||
+    message.includes("OpenSSH Client not found") ||
+    message.includes("SSH client was not found on this system")
+  );
+}
+
+function normalizeTunnelStartError(message: string) {
+  if (message.includes("OpenSSH Client is not installed") || message.includes("OpenSSH Client not found")) {
+    return {
+      cardMessage: "OpenSSH Client is not installed. Install it from Windows Optional Features, then try again.",
+      toastMessage: "OpenSSH Client is not installed on Windows. Open Settings > Optional Features and install OpenSSH Client.",
+    };
+  }
+
+  if (isMissingSshError(message)) {
+    return {
+      cardMessage: "SSH client is not installed. Install OpenSSH on this device, then try again.",
+      toastMessage: "SSH client is not installed. Open Settings for install guidance, then try again.",
+    };
+  }
+
+  return {
+    cardMessage: message,
+    toastMessage: `Failed to start: ${message}`,
+  };
+}
 
 function resolveClipboardIconType(profile: ClipboardProfilePayload["profile"]): "custom" | "generated" {
   if (profile.iconType) {
@@ -175,6 +206,7 @@ function App() {
   const [logProfile, setLogProfile] = useState<TunnelProfile | null>(null);
   const [passwordPromptProfile, setPasswordPromptProfile] = useState<TunnelProfile | null>(null);
   const [startingWithPrompt, setStartingWithPrompt] = useState(false);
+  const [devShowGuideOnLaunch, setDevShowGuideOnLaunch] = useState(false);
   const sessionPasswordsRef = useRef<Record<string, string>>({});
 
   const profiles = useProfileStore((s) => s.profiles);
@@ -266,34 +298,33 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!isMacOS) {
+    if (!isDevBuild) {
       return;
     }
 
-    void TauriCommands.setMenuBarMode(menuBarModeEnabled);
-  }, [menuBarModeEnabled]);
+    void TauriCommands.getDevShowGuideOnLaunch()
+      .then(setDevShowGuideOnLaunch)
+      .catch(() => setDevShowGuideOnLaunch(false));
+  }, []);
 
   useEffect(() => {
-    if (!isMacOS) {
-      return;
-    }
+    void TauriCommands.setCloseAction(closeAction).catch(() => undefined);
 
-    void TauriCommands.setCloseAction(closeAction);
-  }, [closeAction]);
+    void TauriCommands.setMenuBarMode(menuBarModeEnabled).catch(() => {
+      if (menuBarModeEnabled) {
+        setMenuBarModeEnabled(false);
+      }
+    });
+    // Sync persisted tray settings once on startup.
+    // Subsequent user changes go through explicit handlers.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
-    if (!isMacOS) {
-      return;
-    }
-
-    void TauriCommands.syncMenuBarStatus(menuBarStatus);
+    void TauriCommands.syncMenuBarStatus(menuBarStatus).catch(() => undefined);
   }, [menuBarStatus]);
 
   useEffect(() => {
-    if (!isMacOS) {
-      return;
-    }
-
     const menuBarProfiles = profiles.map((profile) => {
       const status = runtimeStates[profile.id]?.status ?? "IDLE";
       return {
@@ -305,7 +336,7 @@ function App() {
       };
     });
 
-    void TauriCommands.syncMenuBarProfiles(menuBarProfiles);
+    void TauriCommands.syncMenuBarProfiles(menuBarProfiles).catch(() => undefined);
   }, [profiles, runtimeStates]);
 
   const getKeychainService = useCallback((profileId: string) => `tunnel-manager.${profileId}`, []);
@@ -421,6 +452,10 @@ function App() {
   const handleCreate = useCallback(() => {
     setEditingProfile(null);
     setFormOpen(true);
+  }, []);
+
+  const handleOpenSettings = useCallback(() => {
+    setSettingsOpen(true);
   }, []);
 
   const handleEdit = useCallback((profile: TunnelProfile) => {
@@ -621,8 +656,9 @@ function App() {
         await startTunnel(profile);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        setError(profile.id, msg);
-        addToast({ message: `Failed to start: ${msg}`, type: "error" });
+        const normalized = normalizeTunnelStartError(msg);
+        setError(profile.id, normalized.cardMessage);
+        addToast({ message: normalized.toastMessage, type: "error" });
       }
     },
     [setError, addToast, startTunnel, getKeychainService, getPasswordAccount, updateProfile]
@@ -638,8 +674,9 @@ function App() {
         setPasswordPromptProfile(null);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        setError(passwordPromptProfile.id, msg);
-        addToast({ message: `Failed to start: ${msg}`, type: "error" });
+        const normalized = normalizeTunnelStartError(msg);
+        setError(passwordPromptProfile.id, normalized.cardMessage);
+        addToast({ message: normalized.toastMessage, type: "error" });
       } finally {
         setStartingWithPrompt(false);
       }
@@ -697,6 +734,61 @@ function App() {
     }
   }, [addToast, checkForUpdates, updateStatus]);
 
+  const handleDevShowGuideOnLaunchChange = useCallback(
+    async (enabled: boolean) => {
+      try {
+        await TauriCommands.setDevShowGuideOnLaunch(enabled);
+        setDevShowGuideOnLaunch(enabled);
+        addToast({
+          message: enabled
+            ? "Guide card will show on every launch in dev mode"
+            : "Guide card will only show on first launch again",
+          type: "success",
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        addToast({ message: `Failed to update dev guide setting: ${message}`, type: "error" });
+      }
+    },
+    [addToast]
+  );
+
+  const handleMenuBarModeEnabledChange = useCallback(
+    async (enabled: boolean) => {
+      try {
+        await TauriCommands.setMenuBarMode(enabled);
+        setMenuBarModeEnabled(enabled);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        addToast({ message: `Failed to update tray mode: ${message}`, type: "error" });
+      }
+    },
+    [addToast, setMenuBarModeEnabled]
+  );
+
+  const handleCloseActionChange = useCallback(
+    async (action: typeof closeAction) => {
+      try {
+        await TauriCommands.setCloseAction(action);
+        setCloseAction(action);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        addToast({ message: `Failed to update close behavior: ${message}`, type: "error" });
+      }
+    },
+    [addToast, setCloseAction]
+  );
+
+  const handleReopenOnboarding = useCallback(async () => {
+    setSettingsOpen(false);
+    try {
+      await TauriCommands.reopenOnboarding();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      addToast({ message: `Failed to open onboarding: ${message}`, type: "error" });
+    }
+  }, [addToast]);
+
   useEffect(() => {
     if (!isMacOS) {
       return;
@@ -725,17 +817,52 @@ function App() {
     };
   }, [handleStart, handleStop]);
 
+  useEffect(() => {
+    void TauriCommands.takePendingMainWindowAction().then((payload) => {
+      if (!payload) {
+        return;
+      }
+
+      if (payload.action === "open_settings") {
+        handleOpenSettings();
+        return;
+      }
+
+      handleCreate();
+    });
+  }, [handleCreate, handleOpenSettings]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+
+    void listen<{ action: "open_settings" | "create_profile" }>(MAIN_WINDOW_NAVIGATION_EVENT, ({ payload }) => {
+      if (payload.action === "open_settings") {
+        handleOpenSettings();
+        return;
+      }
+
+      handleCreate();
+    }).then((dispose) => {
+      unlisten = dispose;
+    });
+
+    return () => {
+      unlisten?.();
+    };
+  }, [handleCreate, handleOpenSettings]);
+
   return (
     <div className="flex flex-col min-h-screen bg-background text-on-background font-body">
       {/* TopAppBar */}
       <header className="sticky top-0 z-40 bg-background font-headline text-sm font-medium tracking-tight">
         <div data-tauri-drag-region className="h-8 w-full" />
         <div className="flex h-14 items-center px-8">
-          <div data-tauri-drag-region className="flex items-center gap-3 text-xl leading-none font-bold tracking-tighter text-on-surface">
-            <img src={appLogo} alt="" className="h-8 w-8 rounded-[0.7rem] shadow-sm" />
-            <span>TunnelArch</span>
+          <div
+            data-tauri-drag-region
+            className="flex h-full min-w-0 flex-1 items-center text-base font-bold tracking-tight text-on-surface"
+          >
+            <span>SSH Tunnel Manager</span>
           </div>
-          <div data-tauri-drag-region className="h-full flex-1 min-w-8" />
           <div className="flex items-center gap-6">
             <div className="hidden sm:flex items-center bg-surface-container-low rounded-full px-4 py-1.5 focus-within:ring-2 ring-primary/30 transition-all">
               <span className="material-symbols-outlined text-on-surface-variant text-lg mr-2">search</span>
@@ -771,7 +898,7 @@ function App() {
       <main className="px-8 py-10 max-w-7xl mx-auto w-full flex-1">
         {/* Hero Stats / Bento Header */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6 mb-12">
-          <div className="md:col-span-8 bg-surface-container-low rounded-xl p-8 flex flex-col justify-between min-h-[220px]">
+          <div className="md:col-span-8 bg-surface-container-low rounded-xl p-8 flex flex-col justify-between min-h-[220px] panel-interactive panel-entrance">
             <div>
               <h1 className="text-5xl font-headline font-extrabold text-on-surface tracking-tight leading-none mb-2">
                 {activeCount} Active
@@ -781,7 +908,7 @@ function App() {
             <div className="flex gap-4 mt-6">
               <button 
                 onClick={handleCreate} 
-                className="bg-gradient-to-br from-primary to-primary-container text-on-primary font-semibold px-6 py-2.5 rounded-xl flex items-center gap-2 hover:opacity-90 active:scale-95 transition-all"
+                className="bg-primary text-on-primary font-semibold px-6 py-2.5 rounded-xl flex items-center gap-2 shadow-lg shadow-primary/20 hover:bg-primary-dim active:scale-95 transition-all"
               >
                 <span className="material-symbols-outlined text-lg">add</span>
                 New Connection
@@ -794,7 +921,7 @@ function App() {
               </button>
             </div>
           </div>
-          <div className="md:col-span-4 bg-surface-container-highest rounded-xl p-8 relative overflow-hidden group">
+          <div className="md:col-span-4 bg-surface-container-highest rounded-xl p-8 relative overflow-hidden group panel-interactive panel-entrance">
             <div className="relative z-10">
               <span className="text-xs font-bold text-primary tracking-widest uppercase mb-4 block">Total Profiles</span>
               <div className="text-3xl font-bold font-headline text-on-surface mb-1">{profiles.length}</div>
@@ -898,9 +1025,9 @@ function App() {
       </main>
 
       {/* Floating Action Button (Mobile) */}
-      <button 
+      <button
         onClick={handleCreate}
-        className="fixed bottom-20 right-8 w-14 h-14 rounded-full bg-gradient-to-br from-primary to-primary-container text-on-primary shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all md:hidden z-50"
+        className="fixed bottom-20 right-8 w-14 h-14 rounded-full bg-primary text-on-primary shadow-2xl shadow-primary/25 flex items-center justify-center hover:bg-primary-dim hover:scale-110 active:scale-95 transition-all md:hidden z-50"
       >
         <span className="material-symbols-outlined text-3xl">add</span>
       </button>
@@ -951,9 +1078,11 @@ function App() {
         themeMode={themeMode}
         onThemeModeChange={setThemeMode}
         currentVersion={currentVersion}
+        platformName={platform()}
         updateChannel={updateChannel}
         autoCheckUpdates={autoCheckUpdates}
-        isMacOS={isMacOS}
+        windowsSshHelpUrl={WINDOWS_SSH_HELP_URL}
+        onOpenSshHelpUrl={(url) => void TauriCommands.openUrl(url)}
         menuBarModeEnabled={menuBarModeEnabled}
         closeAction={closeAction}
         updateStatus={updateStatus}
@@ -963,11 +1092,15 @@ function App() {
         lastCheckedAt={lastCheckedAt}
         onUpdateChannelChange={setUpdateChannel}
         onAutoCheckUpdatesChange={setAutoCheckUpdates}
-        onMenuBarModeEnabledChange={setMenuBarModeEnabled}
-        onCloseActionChange={setCloseAction}
+        onMenuBarModeEnabledChange={handleMenuBarModeEnabledChange}
+        onCloseActionChange={handleCloseActionChange}
         onCheckForUpdates={handleCheckForUpdates}
         onInstallUpdate={handleInstallUpdate}
         onOpenReleaseNotes={(url) => void TauriCommands.openUrl(url)}
+        onReopenOnboarding={handleReopenOnboarding}
+        isDevBuild={isDevBuild}
+        devShowGuideOnLaunch={devShowGuideOnLaunch}
+        onDevShowGuideOnLaunchChange={handleDevShowGuideOnLaunchChange}
       />
 
       <Modal

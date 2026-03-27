@@ -77,7 +77,7 @@ export function ProfileCard({
   };
 
   return (
-    <div className={`bg-surface-container-low hover:bg-surface-container transition-all group rounded-xl p-5 flex ${isGrid ? "flex-col items-start gap-4" : "items-center justify-between"}`}>
+    <div className={`bg-surface-container-low hover:bg-surface-container group rounded-xl p-5 flex panel-interactive panel-entrance ${isGrid ? "flex-col items-start gap-4" : "items-center justify-between"}`}>
       <div className={`flex items-center gap-5 ${isGrid ? "w-full" : ""}`}>
         <div className="relative flex-shrink-0">
           <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${isRunning || isConnecting ? "bg-surface-container-highest text-primary" : "bg-surface-container-highest text-on-surface-variant"}`}>

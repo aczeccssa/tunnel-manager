@@ -10,9 +10,11 @@ interface SettingsPageProps {
   themeMode: ThemeMode;
   onThemeModeChange: (mode: ThemeMode) => void;
   currentVersion: string;
+  platformName: string;
   updateChannel: UpdateChannel;
   autoCheckUpdates: boolean;
-  isMacOS: boolean;
+  windowsSshHelpUrl: string;
+  onOpenSshHelpUrl: (url: string) => void;
   menuBarModeEnabled: boolean;
   closeAction: CloseAction;
   updateStatus: UpdateStatus;
@@ -27,6 +29,10 @@ interface SettingsPageProps {
   onCheckForUpdates: () => void | Promise<void>;
   onInstallUpdate: () => void | Promise<void>;
   onOpenReleaseNotes: (url: string) => void;
+  onReopenOnboarding: () => void | Promise<void>;
+  isDevBuild: boolean;
+  devShowGuideOnLaunch: boolean;
+  onDevShowGuideOnLaunchChange: (enabled: boolean) => void | Promise<void>;
 }
 
 const themeOptions: { value: ThemeMode; label: string }[] = [
@@ -43,8 +49,8 @@ const updateChannelOptions: { value: UpdateChannel; label: string }[] = [
 const closeActionOptions: { value: CloseAction; label: string; description: string }[] = [
   {
     value: "hide_to_menu_bar",
-    label: "Hide to Menu Bar",
-    description: "Keep the app running in the macOS menu bar when the main window is closed.",
+    label: "Hide to Tray",
+    description: "Keep the app running in the system tray when the main window is closed.",
   },
   {
     value: "quit",
@@ -59,9 +65,11 @@ export function SettingsPage({
   themeMode,
   onThemeModeChange,
   currentVersion,
+  platformName,
   updateChannel,
   autoCheckUpdates,
-  isMacOS,
+  windowsSshHelpUrl,
+  onOpenSshHelpUrl,
   menuBarModeEnabled,
   closeAction,
   updateStatus,
@@ -76,10 +84,20 @@ export function SettingsPage({
   onCheckForUpdates,
   onInstallUpdate,
   onOpenReleaseNotes,
+  onReopenOnboarding,
+  isDevBuild,
+  devShowGuideOnLaunch,
+  onDevShowGuideOnLaunchChange,
 }: SettingsPageProps) {
   const [sshPath, setSshPath] = useState("");
   const [sshVersion, setSshVersion] = useState("");
   const [sshStatus, setSshStatus] = useState<"ok" | "error" | "loading">("loading");
+  const [sshError, setSshError] = useState("");
+  const isWindows = platformName === "windows";
+  const isMissingSsh =
+    sshError.includes("OpenSSH Client is not installed") ||
+    sshError.includes("OpenSSH Client not found") ||
+    sshError.includes("SSH client was not found on this system");
 
   useEffect(() => {
     if (open) {
@@ -89,13 +107,18 @@ export function SettingsPage({
 
   const loadSshInfo = async () => {
     setSshStatus("loading");
+    setSshError("");
     try {
       const path = await invoke<string>("get_ssh_binary_path");
       const version = await invoke<string>("get_ssh_version");
       setSshPath(path);
       setSshVersion(version);
       setSshStatus("ok");
-    } catch {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setSshPath("Not found");
+      setSshVersion("");
+      setSshError(message);
       setSshStatus("error");
     }
   };
@@ -278,15 +301,14 @@ export function SettingsPage({
           </div>
         </SettingsSection>
 
-        {isMacOS && (
-          <SettingsSection title="Menu Bar">
+        <SettingsSection title="System Tray">
             <div className="space-y-4">
               <div className="rounded-xl bg-surface-container-highest px-4 py-4 space-y-4">
                 <div className="flex items-center justify-between gap-4">
                   <div>
-                    <div className="text-sm font-medium text-on-surface">Menu bar mode</div>
+                    <div className="text-sm font-medium text-on-surface">Tray mode</div>
                     <p className="text-xs text-on-surface-variant mt-1">
-                      Keep a persistent menu bar icon and hide the Dock icon while the window is hidden.
+                      Keep a persistent tray icon and hide the main window to tray when it is closed.
                     </p>
                   </div>
                   <ToggleSwitch checked={menuBarModeEnabled} onChange={() => onMenuBarModeEnabledChange(!menuBarModeEnabled)} />
@@ -331,7 +353,6 @@ export function SettingsPage({
               </div>
             </div>
           </SettingsSection>
-        )}
 
         {/* SSH Binary */}
         <SettingsSection title="SSH Configuration">
@@ -354,6 +375,46 @@ export function SettingsPage({
               <span className="text-xs text-on-surface-variant px-1">
                 {sshVersion}
               </span>
+            )}
+            {sshStatus === "error" && (
+              <div className="rounded-xl bg-error/10 border border-error/20 px-4 py-4 space-y-3">
+                <p className="text-sm text-error">
+                  {isWindows
+                    ? "OpenSSH Client not found"
+                    : isMissingSsh
+                    ? "SSH client not found"
+                    : sshError || "SSH client detection failed"}
+                </p>
+                {isWindows && (
+                  <>
+                    <p className="text-sm text-on-surface-variant leading-6">
+                      Install `OpenSSH Client` from `Settings {" > "} Optional Features`, then click `Re-check`.
+                    </p>
+                    <div className="rounded-md bg-surface-container px-3 py-3 font-mono text-xs text-on-surface overflow-x-auto">
+                      Add-WindowsCapability -Online -Name OpenSSH.Client~~~~0.0.1.0
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onOpenSshHelpUrl(windowsSshHelpUrl)}
+                      className="text-sm text-primary hover:text-primary-dim transition-colors"
+                    >
+                      Open Microsoft Learn guide
+                    </button>
+                  </>
+                )}
+                {!isWindows && (
+                  <>
+                    {isMissingSsh ? (
+                      <p className="text-sm text-on-surface-variant leading-6">
+                        Install OpenSSH and make sure `ssh` is available on `PATH`, then click `Re-check`.
+                      </p>
+                    ) : null}
+                    {sshError && (
+                      <p className="text-sm text-on-surface-variant leading-6">{sshError}</p>
+                    )}
+                  </>
+                )}
+              </div>
             )}
             <button
               type="button"
@@ -378,10 +439,38 @@ export function SettingsPage({
             </div>
             <div className="flex items-center justify-between text-sm">
               <span className="text-on-surface-variant">Platform</span>
-              <span className="text-on-surface font-medium">macOS</span>
+              <span className="text-on-surface font-medium">{platformName}</span>
+            </div>
+            <div className="pt-3">
+              <button
+                type="button"
+                onClick={() => void onReopenOnboarding()}
+                className="rounded-md bg-surface-container px-4 py-2 text-sm font-medium text-on-surface transition-colors hover:bg-surface-container-high"
+              >
+                Reopen Onboarding
+              </button>
             </div>
           </div>
         </SettingsSection>
+
+        {isDevBuild && (
+          <SettingsSection title="Developer">
+            <div className="rounded-xl bg-surface-container-highest px-4 py-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-sm font-medium text-on-surface">Show guide on every launch</div>
+                  <p className="text-xs text-on-surface-variant mt-1">
+                    Dev only. Ignore the first-run flag and reopen the intro guide every time the app starts.
+                  </p>
+                </div>
+                <ToggleSwitch
+                  checked={devShowGuideOnLaunch}
+                  onChange={() => void onDevShowGuideOnLaunchChange(!devShowGuideOnLaunch)}
+                />
+              </div>
+            </div>
+          </SettingsSection>
+        )}
 
         {/* Data */}
         <SettingsSection title="Data Storage">

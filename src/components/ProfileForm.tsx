@@ -601,7 +601,7 @@ export function ProfileForm({ open, onClose, onSave, onPasteConfig, initialData 
             </button>
             <button 
               type="submit"
-              className="px-8 py-2.5 rounded-md bg-gradient-to-br from-primary to-primary-container text-on-primary font-semibold shadow-lg shadow-primary/20 hover:brightness-110 transition-all active:scale-95"
+              className="px-8 py-2.5 rounded-md bg-primary text-on-primary font-semibold shadow-lg shadow-primary/20 hover:bg-primary-dim transition-all active:scale-95"
             >
               {isEditing ? "Save Changes" : "Save Profile"}
             </button>
@@ -669,7 +669,7 @@ export function ProfileForm({ open, onClose, onSave, onPasteConfig, initialData 
               type="button"
               onClick={() => void handleConfirmManualPaste()}
               disabled={confirmingManualPaste || !manualPasteValue.trim()}
-              className="px-8 py-2.5 rounded-md bg-gradient-to-br from-primary to-primary-container text-on-primary font-semibold shadow-lg shadow-primary/20 hover:brightness-110 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-8 py-2.5 rounded-md bg-primary text-on-primary font-semibold shadow-lg shadow-primary/20 hover:bg-primary-dim transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {confirmingManualPaste ? "Importing..." : "Confirm"}
             </button>

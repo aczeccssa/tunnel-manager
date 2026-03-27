@@ -13,9 +13,11 @@ This template should help get you started developing with Tauri, React and Types
 - GitHub CD release: update the app version first, then push a matching `v0.1.0` style tag to trigger multi-platform release packaging
 - Release workflow blocks if the Git tag and app version files do not match exactly
 
-## Docs
+## Platform Notes
 
-- [Auto Update Setup](docs/auto-update.md)
+- Windows requires the system `OpenSSH Client`
+- Recommended install path on Windows: `Settings > Optional Features > OpenSSH Client`
+- PowerShell install command: `Add-WindowsCapability -Online -Name OpenSSH.Client~~~~0.0.1.0`
 
 ## Recommended IDE Setup
 

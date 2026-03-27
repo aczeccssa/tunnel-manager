@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 interface ModalProps {
   open: boolean;
@@ -17,6 +17,9 @@ const sizeWidths = {
   xl: "max-w-3xl",
 };
 
+const TRANSITION_MS = 220;
+type ModalPhase = "closed" | "entering" | "open" | "closing";
+
 export function Modal({
   open,
   onClose,
@@ -25,11 +28,56 @@ export function Modal({
   size = "xl",
   showClose = true,
 }: ModalProps) {
+  const [phase, setPhase] = useState<ModalPhase>(open ? "open" : "closed");
+
+  useEffect(() => {
+    if (open) {
+      setPhase((current) => {
+        if (current === "open" || current === "entering") {
+          return current;
+        }
+        return "entering";
+      });
+      return;
+    }
+
+    setPhase((current) => {
+      if (current === "closed" || current === "closing") {
+        return current;
+      }
+      return "closing";
+    });
+  }, [open]);
+
+  useEffect(() => {
+    if (phase !== "entering" && phase !== "closing") {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setPhase((current) => {
+        if (current === "entering") {
+          return "open";
+        }
+        if (current === "closing") {
+          return "closed";
+        }
+        return current;
+      });
+    }, TRANSITION_MS);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [phase]);
+
+  const isMounted = phase !== "closed";
+
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
-    if (open) {
+    if (isMounted) {
       document.addEventListener("keydown", handleEsc);
       document.body.style.overflow = "hidden";
     }
@@ -37,13 +85,17 @@ export function Modal({
       document.removeEventListener("keydown", handleEsc);
       document.body.style.overflow = "";
     };
-  }, [open, onClose]);
+  }, [isMounted, onClose]);
 
-  if (!open) return null;
+  if (!isMounted) return null;
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-surface-dim/70 backdrop-blur-sm p-4"
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-surface-dim/70 backdrop-blur-sm p-4 ${
+        phase === "entering" || phase === "open"
+          ? "modal-backdrop-enter"
+          : "modal-backdrop-exit"
+      }`}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       {/* Panel */}
@@ -53,7 +105,8 @@ export function Modal({
           glass-panel rounded-xl
           shadow-[var(--shadow-modal)]
           overflow-hidden flex flex-col max-h-[90vh]
-          animate-in fade-in zoom-in-95 duration-200 ease-out
+          ${phase === "entering" ? "modal-panel-enter" : ""}
+          ${phase === "closing" ? "modal-panel-exit" : ""}
         `}
         onClick={(e) => e.stopPropagation()}
       >
