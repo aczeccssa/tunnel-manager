@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { Modal } from "./ui";
+import { SettingsSection, ToggleSwitch } from "./SettingsControls";
 import type { ThemeMode } from "../store";
 import type { CloseAction, UpdateChannel, UpdateInfo, UpdateStatus } from "../types";
+import { useSshInfo } from "../hooks/useSshInfo";
 
 interface SettingsPageProps {
   open: boolean;
@@ -89,39 +89,13 @@ export function SettingsPage({
   devShowGuideOnLaunch,
   onDevShowGuideOnLaunchChange,
 }: SettingsPageProps) {
-  const [sshPath, setSshPath] = useState("");
-  const [sshVersion, setSshVersion] = useState("");
-  const [sshStatus, setSshStatus] = useState<"ok" | "error" | "loading">("loading");
-  const [sshError, setSshError] = useState("");
+  // SSH diagnostics are fetched lazily so opening the modal reflects the current host environment.
+  const { sshPath, sshVersion, sshStatus, sshError, reload } = useSshInfo(open);
   const isWindows = platformName === "windows";
   const isMissingSsh =
     sshError.includes("OpenSSH Client is not installed") ||
     sshError.includes("OpenSSH Client not found") ||
     sshError.includes("SSH client was not found on this system");
-
-  useEffect(() => {
-    if (open) {
-      loadSshInfo();
-    }
-  }, [open]);
-
-  const loadSshInfo = async () => {
-    setSshStatus("loading");
-    setSshError("");
-    try {
-      const path = await invoke<string>("get_ssh_binary_path");
-      const version = await invoke<string>("get_ssh_version");
-      setSshPath(path);
-      setSshVersion(version);
-      setSshStatus("ok");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setSshPath("Not found");
-      setSshVersion("");
-      setSshError(message);
-      setSshStatus("error");
-    }
-  };
 
   const formatTimestamp = (value?: string) =>
     value
@@ -418,7 +392,7 @@ export function SettingsPage({
             )}
             <button
               type="button"
-              onClick={loadSshInfo}
+              onClick={() => void reload()}
               className="self-start px-3 py-2 rounded-md text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors"
             >
               Re-check
@@ -497,37 +471,5 @@ export function SettingsPage({
         </div>
       </div>
     </Modal>
-  );
-}
-
-function SettingsSection({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-2">
-        <span className="w-1.5 h-6 bg-primary rounded-full"></span>
-        <h3 className="font-headline text-lg font-semibold text-on-surface">{title}</h3>
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: () => void }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      onClick={onChange}
-      className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full px-1 transition-colors ${
-        checked ? "bg-primary" : "bg-surface-container"
-      }`}
-    >
-      <span
-        className={`block h-5 w-5 rounded-full transition-transform ${
-          checked ? "translate-x-5 bg-on-primary" : "translate-x-0 bg-on-surface-variant"
-        }`}
-      />
-    </button>
   );
 }

@@ -98,6 +98,19 @@ fn update_tray_title(_app: &AppHandle, _title: &str) -> Result<(), String> {
 
 fn build_menu_bar_menu(app: &AppHandle, status: &str) -> Result<Menu<tauri::Wry>, String> {
     let menu = Menu::new(app).map_err(|e| e.to_string())?;
+    append_status_items(app, &menu, status)?;
+    let profiles = app.state::<Arc<MenuBarState>>().profiles.lock().clone();
+    append_profile_items(app, &menu, &profiles)?;
+    append_global_items(app, &menu)?;
+
+    Ok(menu)
+}
+
+fn append_status_items(
+    app: &AppHandle,
+    menu: &Menu<tauri::Wry>,
+    status: &str,
+) -> Result<(), String> {
     let status_item = MenuItem::with_id(
         app,
         TRAY_STATUS_ITEM_ID,
@@ -109,19 +122,28 @@ fn build_menu_bar_menu(app: &AppHandle, status: &str) -> Result<Menu<tauri::Wry>
     let separator = PredefinedMenuItem::separator(app).map_err(|e| e.to_string())?;
 
     menu.append(&status_item).map_err(|e| e.to_string())?;
-    menu.append(&separator).map_err(|e| e.to_string())?;
+    menu.append(&separator).map_err(|e| e.to_string())
+}
 
-    let profiles = app.state::<Arc<MenuBarState>>().profiles.lock().clone();
+fn append_profile_items(
+    app: &AppHandle,
+    menu: &Menu<tauri::Wry>,
+    profiles: &[MenuBarProfile],
+) -> Result<(), String> {
     for profile in profiles {
-        let submenu = build_menu_bar_profile_submenu(app, &profile)?;
+        let submenu = build_menu_bar_profile_submenu(app, profile)?;
         menu.append(&submenu).map_err(|e| e.to_string())?;
     }
 
-    if !app.state::<Arc<MenuBarState>>().profiles.lock().is_empty() {
-        let profile_separator = PredefinedMenuItem::separator(app).map_err(|e| e.to_string())?;
-        menu.append(&profile_separator).map_err(|e| e.to_string())?;
+    if profiles.is_empty() {
+        return Ok(());
     }
 
+    let profile_separator = PredefinedMenuItem::separator(app).map_err(|e| e.to_string())?;
+    menu.append(&profile_separator).map_err(|e| e.to_string())
+}
+
+fn append_global_items(app: &AppHandle, menu: &Menu<tauri::Wry>) -> Result<(), String> {
     let show_window_item = MenuItem::with_id(
         app,
         TRAY_SHOW_WINDOW_ITEM_ID,
@@ -134,9 +156,7 @@ fn build_menu_bar_menu(app: &AppHandle, status: &str) -> Result<Menu<tauri::Wry>
         .map_err(|e| e.to_string())?;
 
     menu.append(&show_window_item).map_err(|e| e.to_string())?;
-    menu.append(&quit_item).map_err(|e| e.to_string())?;
-
-    Ok(menu)
+    menu.append(&quit_item).map_err(|e| e.to_string())
 }
 
 fn build_menu_bar_profile_submenu(
@@ -320,32 +340,70 @@ pub fn sync_menu_bar_profiles(
 }
 
 pub fn handle_menu_event(app: &AppHandle, event: &MenuEvent) {
+    let event_id = event.id();
+    if event_id.as_ref() == TRAY_SHOW_WINDOW_ITEM_ID {
+        handle_show_window_event(app);
+        return;
+    }
+
+    if event_id.as_ref() == TRAY_QUIT_ITEM_ID {
+        handle_quit_event(app);
+        return;
+    }
+
+    if let Some(profile_id) = profile_action_id(event_id.as_ref(), TRAY_PROFILE_START_PREFIX) {
+        emit_profile_action_with_warning(app, profile_id, "start");
+        return;
+    }
+
+    if let Some(profile_id) = profile_action_id(event_id.as_ref(), TRAY_PROFILE_STOP_PREFIX) {
+        emit_profile_action_with_warning(app, profile_id, "stop");
+    }
+}
+
+fn handle_show_window_event(app: &AppHandle) {
     let menu_bar_state = app.state::<Arc<MenuBarState>>();
-    match event.id().as_ref() {
-        TRAY_SHOW_WINDOW_ITEM_ID => {
-            if let Err(err) = show_main_window(app, menu_bar_state.inner().as_ref()) {
-                warn!("Failed to show window from tray: {err}");
-            }
-        }
-        TRAY_QUIT_ITEM_ID => {
-            menu_bar_state.quitting.store(true, Ordering::SeqCst);
-            app.exit(0);
-        }
-        id if id.starts_with(TRAY_PROFILE_START_PREFIX) => {
-            if let Some(profile_id) = id.split_once(':').map(|(_, value)| value.to_string()) {
-                if let Err(err) = emit_menu_bar_profile_action(app, profile_id, "start") {
-                    warn!("Failed to emit tray start action: {err}");
-                }
-            }
-        }
-        id if id.starts_with(TRAY_PROFILE_STOP_PREFIX) => {
-            if let Some(profile_id) = id.split_once(':').map(|(_, value)| value.to_string()) {
-                if let Err(err) = emit_menu_bar_profile_action(app, profile_id, "stop") {
-                    warn!("Failed to emit tray stop action: {err}");
-                }
-            }
-        }
-        _ => {}
+    if let Err(err) = show_main_window(app, menu_bar_state.inner().as_ref()) {
+        warn!("Failed to show window from tray: {err}");
+    }
+}
+
+fn handle_quit_event(app: &AppHandle) {
+    let menu_bar_state = app.state::<Arc<MenuBarState>>();
+    menu_bar_state.quitting.store(true, Ordering::SeqCst);
+    app.exit(0);
+}
+
+fn profile_action_id(id: &str, prefix: &str) -> Option<String> {
+    id.starts_with(prefix)
+        .then(|| id.split_once(':').map(|(_, value)| value.to_string()))
+        .flatten()
+}
+
+fn emit_profile_action_with_warning(app: &AppHandle, profile_id: String, action: &str) {
+    if let Err(err) = emit_menu_bar_profile_action(app, profile_id, action) {
+        warn!("Failed to emit tray {action} action: {err}");
+    }
+}
+
+fn handle_main_window_close_event(
+    app: &AppHandle,
+    state: &Arc<MenuBarState>,
+    api: &tauri::CloseRequestApi,
+) {
+    if state.quitting.load(Ordering::SeqCst) || !should_hide_to_menu_bar(state.as_ref()) {
+        return;
+    }
+
+    api.prevent_close();
+    if let Err(err) = hide_main_window_to_menu_bar(app, state.as_ref()) {
+        warn!("Failed to hide window to tray: {err}");
+    }
+}
+
+fn handle_main_window_focus_event(app: &AppHandle, state: &Arc<MenuBarState>) {
+    if let Err(err) = sync_dock_visibility(app, state.as_ref()) {
+        warn!("Failed to sync Dock visibility on focus: {err}");
     }
 }
 
@@ -355,20 +413,10 @@ pub fn handle_window_event(window: &Window, event: &WindowEvent) {
 
     match event {
         WindowEvent::CloseRequested { api, .. } if window.label() == MAIN_WINDOW_LABEL => {
-            if !menu_bar_state.quitting.load(Ordering::SeqCst)
-                && should_hide_to_menu_bar(menu_bar_state.inner().as_ref())
-            {
-                api.prevent_close();
-                if let Err(err) = hide_main_window_to_menu_bar(app, menu_bar_state.inner().as_ref())
-                {
-                    warn!("Failed to hide window to tray: {err}");
-                }
-            }
+            handle_main_window_close_event(app, &menu_bar_state, api);
         }
         WindowEvent::Focused(true) if window.label() == MAIN_WINDOW_LABEL => {
-            if let Err(err) = sync_dock_visibility(app, menu_bar_state.inner().as_ref()) {
-                warn!("Failed to sync Dock visibility on focus: {err}");
-            }
+            handle_main_window_focus_event(app, &menu_bar_state);
         }
         _ => {}
     }

@@ -1,201 +1,41 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { listen } from "@tauri-apps/api/event";
 import { ProfileList } from "./components/ProfileList";
 import { ProfileForm } from "./components/ProfileForm";
 import { LogPanel } from "./components/LogPanel";
 import { PasswordPrompt } from "./components/PasswordPrompt";
 import { SettingsPage } from "./components/SettingsPage";
-import { Modal, ToastContainer, useToastStore } from "./components/ui";
+import { DeleteProfileDialog, UpdatePrompt } from "./components/AppDialogs";
+import { AppHeader, MobileNavigation } from "./components/AppShell";
+import { FilterMenuItem } from "./components/FilterMenuItem";
+import { ToastContainer, useToastStore } from "./components/ui";
 import { useProfileStore, useRuntimeStore, useLogsStore, useUIStore, useUpdateStore } from "./store";
 import { TauriCommands, toRustProfile } from "./TauriCommands";
 import { useTunnelPolling } from "./hooks/useTunnelPolling";
 import { useTheme } from "./hooks/useTheme";
 import { useAppUpdater } from "./hooks/useAppUpdater";
+import { useMainWindowNavigation, useMenuBarProfileActions } from "./hooks/useWindowNavigation";
 import { platform } from "@tauri-apps/plugin-os";
-import { z } from "zod";
 import { STATUS_LABELS } from "./types";
-import type { MenuBarStatus, TunnelProfile, ProfileFormData } from "./types";
+import {
+  buildClipboardPayload,
+  clipboardProfileSchema,
+  getDevPasswordCache,
+  getMenuBarStatus,
+  normalizeTunnelStartError,
+  readClipboardText,
+  resolveClipboardIconType,
+  setDevPasswordCache,
+  writeClipboardText,
+} from "./lib/app-support";
+import type { TunnelProfile, ProfileFormData } from "./types";
 
 const isMacOS = platform() === "macos";
 const isDevBuild = import.meta.env.DEV;
-const MENU_BAR_PROFILE_ACTION_EVENT = "menu-bar-profile-action";
-const DEV_PASSWORD_CACHE_KEY = "tunnel-manager-dev-password-cache";
-const PROFILE_CLIPBOARD_KIND = "tunnel-manager/profile-config";
-const PROFILE_CLIPBOARD_VERSION = 1;
 const WINDOWS_SSH_HELP_URL =
   "https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh_install_firstuse";
-const MAIN_WINDOW_NAVIGATION_EVENT = "main-window-navigation";
-
-const clipboardProfileSchema = z.object({
-  kind: z.literal(PROFILE_CLIPBOARD_KIND),
-  version: z.literal(PROFILE_CLIPBOARD_VERSION),
-  profile: z.object({
-    name: z.string().min(1),
-    notes: z.string().optional(),
-    websiteUrl: z.string().optional(),
-    iconType: z.enum(["custom", "generated"]).optional(),
-    iconPath: z.string().optional(),
-    generatedIconSeed: z.string().optional(),
-    sshHost: z.string().min(1),
-    sshPort: z.number().int().min(1).max(65535),
-    username: z.string().min(1),
-    authType: z.enum(["PASSWORD", "SSH_KEY"]),
-    rememberPassword: z.boolean().optional(),
-    privateKeyPath: z.string().optional(),
-    mode: z.enum(["LOCAL", "REMOTE", "DYNAMIC"]),
-    localBindHost: z.string().optional(),
-    localPort: z.number().int().min(1).max(65535).optional(),
-    remoteHost: z.string().optional(),
-    remotePort: z.number().int().min(1).max(65535).optional(),
-    remoteBindHost: z.string().optional(),
-    localTargetHost: z.string().optional(),
-    localTargetPort: z.number().int().min(1).max(65535).optional(),
-    autoReconnect: z.boolean().optional(),
-    openUrlAfterStart: z.boolean().optional(),
-  }),
-});
-
-type ClipboardProfilePayload = z.infer<typeof clipboardProfileSchema>;
-
-function isMissingSshError(message: string) {
-  return (
-    message.includes("OpenSSH Client is not installed") ||
-    message.includes("OpenSSH Client not found") ||
-    message.includes("SSH client was not found on this system")
-  );
-}
-
-function normalizeTunnelStartError(message: string) {
-  if (message.includes("OpenSSH Client is not installed") || message.includes("OpenSSH Client not found")) {
-    return {
-      cardMessage: "OpenSSH Client is not installed. Install it from Windows Optional Features, then try again.",
-      toastMessage: "OpenSSH Client is not installed on Windows. Open Settings > Optional Features and install OpenSSH Client.",
-    };
-  }
-
-  if (isMissingSshError(message)) {
-    return {
-      cardMessage: "SSH client is not installed. Install OpenSSH on this device, then try again.",
-      toastMessage: "SSH client is not installed. Open Settings for install guidance, then try again.",
-    };
-  }
-
-  return {
-    cardMessage: message,
-    toastMessage: `Failed to start: ${message}`,
-  };
-}
-
-function resolveClipboardIconType(profile: ClipboardProfilePayload["profile"]): "custom" | "generated" {
-  if (profile.iconType) {
-    return profile.iconType;
-  }
-
-  if (profile.iconPath?.trim()) {
-    return "custom";
-  }
-
-  return "generated";
-}
-
-interface MenuBarProfileActionPayload {
-  profileId: string;
-  action: "start" | "stop";
-}
-
-function getMenuBarStatus(states: Record<string, { status: string | undefined }>): MenuBarStatus {
-  const runtimeStatuses = Object.values(states).map((state) => state.status);
-
-  if (runtimeStatuses.includes("ERROR")) {
-    return "Error";
-  }
-
-  if (runtimeStatuses.includes("RUNNING") || runtimeStatuses.includes("CONNECTING")) {
-    return "Running";
-  }
-
-  return "Idle";
-}
-
-function getDevPasswordCache(): Record<string, string> {
-  if (!isDevBuild) {
-    return {};
-  }
-
-  try {
-    const raw = window.localStorage.getItem(DEV_PASSWORD_CACHE_KEY);
-    return raw ? JSON.parse(raw) as Record<string, string> : {};
-  } catch {
-    return {};
-  }
-}
-
-function setDevPasswordCache(next: Record<string, string>) {
-  if (!isDevBuild) {
-    return;
-  }
-
-  window.localStorage.setItem(DEV_PASSWORD_CACHE_KEY, JSON.stringify(next));
-}
-
-async function writeClipboardText(value: string) {
-  try {
-    await navigator.clipboard.writeText(value);
-    return;
-  } catch {
-    const el = document.createElement("textarea");
-    el.value = value;
-    document.body.appendChild(el);
-    el.select();
-    const copied = document.execCommand("copy");
-    document.body.removeChild(el);
-    if (!copied) {
-      throw new Error("Clipboard write is not available in this environment");
-    }
-  }
-}
-
-async function readClipboardText() {
-  if (!navigator.clipboard?.readText) {
-    throw new Error("Clipboard read is not available in this environment");
-  }
-
-  return navigator.clipboard.readText();
-}
-
-function buildClipboardPayload(profile: TunnelProfile): ClipboardProfilePayload {
-  return {
-    kind: PROFILE_CLIPBOARD_KIND,
-    version: PROFILE_CLIPBOARD_VERSION,
-    profile: {
-      name: profile.name,
-      notes: profile.notes,
-      websiteUrl: profile.websiteUrl,
-      iconType: profile.iconType,
-      iconPath: profile.iconPath,
-      generatedIconSeed: profile.generatedIconSeed,
-      sshHost: profile.sshHost,
-      sshPort: profile.sshPort,
-      username: profile.username,
-      authType: profile.authType,
-      rememberPassword: profile.rememberPassword,
-      privateKeyPath: profile.privateKeyPath,
-      mode: profile.mode,
-      localBindHost: profile.localBindHost,
-      localPort: profile.localPort,
-      remoteHost: profile.remoteHost,
-      remotePort: profile.remotePort,
-      remoteBindHost: profile.remoteBindHost,
-      localTargetHost: profile.localTargetHost,
-      localTargetPort: profile.localTargetPort,
-      autoReconnect: profile.autoReconnect,
-      openUrlAfterStart: profile.openUrlAfterStart,
-    },
-  };
-}
 
 function App() {
-  // Tunnel status polling
+  // Keep runtime cards in sync without pushing polling concerns into presentational components.
   useTunnelPolling();
 
   const [formOpen, setFormOpen] = useState(false);
@@ -356,9 +196,9 @@ function App() {
       if (authType !== "PASSWORD") {
         delete sessionPasswordsRef.current[profileId];
         if (isDevBuild) {
-          const cache = getDevPasswordCache();
+          const cache = getDevPasswordCache(isDevBuild);
           delete cache[profileId];
-          setDevPasswordCache(cache);
+          setDevPasswordCache(isDevBuild, cache);
         }
         await TauriCommands.deleteKeychain(service, account);
         return false;
@@ -367,9 +207,9 @@ function App() {
       if (rememberPassword && password) {
         sessionPasswordsRef.current[profileId] = password;
         if (isDevBuild) {
-          const cache = getDevPasswordCache();
+          const cache = getDevPasswordCache(isDevBuild);
           cache[profileId] = password;
-          setDevPasswordCache(cache);
+          setDevPasswordCache(isDevBuild, cache);
         }
         await TauriCommands.storeKeychain(service, account, password);
         return true;
@@ -379,16 +219,16 @@ function App() {
         if (password) {
           sessionPasswordsRef.current[profileId] = password;
           if (isDevBuild) {
-            const cache = getDevPasswordCache();
+            const cache = getDevPasswordCache(isDevBuild);
             cache[profileId] = password;
-            setDevPasswordCache(cache);
+            setDevPasswordCache(isDevBuild, cache);
           }
         } else {
           delete sessionPasswordsRef.current[profileId];
           if (isDevBuild) {
-            const cache = getDevPasswordCache();
+            const cache = getDevPasswordCache(isDevBuild);
             delete cache[profileId];
-            setDevPasswordCache(cache);
+            setDevPasswordCache(isDevBuild, cache);
           }
         }
         await TauriCommands.deleteKeychain(service, account);
@@ -398,9 +238,9 @@ function App() {
       if (password) {
         sessionPasswordsRef.current[profileId] = password;
         if (isDevBuild) {
-          const cache = getDevPasswordCache();
+          const cache = getDevPasswordCache(isDevBuild);
           cache[profileId] = password;
-          setDevPasswordCache(cache);
+          setDevPasswordCache(isDevBuild, cache);
         }
       }
       return hasStoredPassword;
@@ -532,9 +372,9 @@ function App() {
         getPasswordAccount(deleteConfirm.id)
       );
       if (isDevBuild) {
-        const cache = getDevPasswordCache();
+        const cache = getDevPasswordCache(isDevBuild);
         delete cache[deleteConfirm.id];
-        setDevPasswordCache(cache);
+        setDevPasswordCache(isDevBuild, cache);
       }
       addToast({ message: "Profile deleted", type: "info" });
       setDeleteConfirm(null);
@@ -638,7 +478,7 @@ function App() {
           }
 
           if (!password && isDevBuild) {
-            password = getDevPasswordCache()[profile.id];
+            password = getDevPasswordCache(isDevBuild)[profile.id];
           }
 
           if (!password) {
@@ -789,110 +629,24 @@ function App() {
     }
   }, [addToast]);
 
-  useEffect(() => {
-    if (!isMacOS) {
-      return;
-    }
-
-    let unlisten: (() => void) | undefined;
-
-    void listen<MenuBarProfileActionPayload>(MENU_BAR_PROFILE_ACTION_EVENT, ({ payload }) => {
-      const profile = useProfileStore.getState().profiles.find((item) => item.id === payload.profileId);
-      if (!profile) {
-        return;
-      }
-
-      if (payload.action === "start") {
-        void handleStart(profile);
-        return;
-      }
-
-      void handleStop(profile);
-    }).then((dispose) => {
-      unlisten = dispose;
-    });
-
-    return () => {
-      unlisten?.();
-    };
-  }, [handleStart, handleStop]);
-
-  useEffect(() => {
-    void TauriCommands.takePendingMainWindowAction().then((payload) => {
-      if (!payload) {
-        return;
-      }
-
-      if (payload.action === "open_settings") {
-        handleOpenSettings();
-        return;
-      }
-
-      handleCreate();
-    });
-  }, [handleCreate, handleOpenSettings]);
-
-  useEffect(() => {
-    let unlisten: (() => void) | undefined;
-
-    void listen<{ action: "open_settings" | "create_profile" }>(MAIN_WINDOW_NAVIGATION_EVENT, ({ payload }) => {
-      if (payload.action === "open_settings") {
-        handleOpenSettings();
-        return;
-      }
-
-      handleCreate();
-    }).then((dispose) => {
-      unlisten = dispose;
-    });
-
-    return () => {
-      unlisten?.();
-    };
-  }, [handleCreate, handleOpenSettings]);
+  useMenuBarProfileActions(isMacOS, handleStart, handleStop);
+  useMainWindowNavigation(
+    () => TauriCommands.takePendingMainWindowAction(),
+    handleOpenSettings,
+    handleCreate
+  );
 
   return (
     <div className="flex flex-col min-h-screen bg-background text-on-background font-body">
-      {/* TopAppBar */}
-      <header className="sticky top-0 z-40 bg-background font-headline text-sm font-medium tracking-tight">
-        <div data-tauri-drag-region className="h-8 w-full" />
-        <div className="flex h-14 items-center px-8">
-          <div
-            data-tauri-drag-region
-            className="flex h-full min-w-0 flex-1 items-center text-base font-bold tracking-tight text-on-surface"
-          >
-            <span>SSH Tunnel Manager</span>
-          </div>
-          <div className="flex items-center gap-6">
-            <div className="hidden sm:flex items-center bg-surface-container-low rounded-full px-4 py-1.5 focus-within:ring-2 ring-primary/30 transition-all">
-              <span className="material-symbols-outlined text-on-surface-variant text-lg mr-2">search</span>
-              <input className="bg-transparent border-none text-xs focus:ring-0 text-on-surface placeholder:text-on-surface-variant w-48 outline-none" placeholder="Quick find..." type="text"/>
-            </div>
-            <div className="flex items-center gap-2">
-              {showUpdateIndicator && (
-                <button
-                  onClick={() => {
-                    setSettingsOpen(true);
-                    reopenPrompt();
-                  }}
-                  className="relative text-primary hover:text-primary-dim transition-colors"
-                  title={`Update ${availableUpdate?.version} available`}
-                >
-                  <span className="material-symbols-outlined">arrow_upward</span>
-                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-primary status-pulse" />
-                </button>
-              )}
-              <button
-                onClick={() => setSettingsOpen(true)}
-                className="text-on-surface-variant hover:text-on-surface transition-colors"
-                title="Settings (Command+,)"
-              >
-                <span className="material-symbols-outlined">settings</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
+      <AppHeader
+        showUpdateIndicator={showUpdateIndicator}
+        availableVersion={availableUpdate?.version}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenUpdates={() => {
+          setSettingsOpen(true);
+          reopenPrompt();
+        }}
+      />
 
       {/* Dashboard Canvas */}
       <main className="px-8 py-10 max-w-7xl mx-auto w-full flex-1">
@@ -1032,22 +786,10 @@ function App() {
         <span className="material-symbols-outlined text-3xl">add</span>
       </button>
 
-      {/* Mobile Navigation Bar */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-surface-container-low flex justify-around items-center py-3 md:hidden z-50 border-t border-outline-variant/40">
-        <button className="flex flex-col items-center text-primary">
-          <span className="material-symbols-outlined">lan</span>
-          <span className="text-[10px] mt-1">Tunnels</span>
-        </button>
-        <button onClick={() => setSettingsOpen(true)} className="flex flex-col items-center text-on-surface-variant">
-          <span className="relative material-symbols-outlined">
-            settings
-            {showUpdateIndicator && (
-              <span className="absolute -top-1 -right-2 material-symbols-outlined text-[14px] text-primary">arrow_upward</span>
-            )}
-          </span>
-          <span className="text-[10px] mt-1">Settings</span>
-        </button>
-      </nav>
+      <MobileNavigation
+        showUpdateIndicator={showUpdateIndicator}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
 
       {/* Modals */}
       <ProfileForm
@@ -1103,127 +845,19 @@ function App() {
         onDevShowGuideOnLaunchChange={handleDevShowGuideOnLaunchChange}
       />
 
-      <Modal
+      <UpdatePrompt
         open={updatePromptOpen && hasPendingUpdate}
+        availableUpdate={availableUpdate}
         onClose={dismissPrompt}
-        size="md"
-        showClose={false}
-      >
-        <div className="flex flex-col h-full max-h-[90vh]">
-          <header className="px-6 py-5 flex items-center justify-between border-b border-outline-variant/40 bg-surface-container-highest/30 shrink-0">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-md bg-primary/10 flex items-center justify-center text-primary">
-                <span className="material-symbols-outlined">system_update_alt</span>
-              </div>
-              <div>
-                <h2 className="font-headline text-xl font-bold text-on-surface">Update Available</h2>
-                <p className="text-[13px] text-on-surface-variant font-label">
-                  {availableUpdate ? `Version ${availableUpdate.version} is ready to install` : "A new release is available"}
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={dismissPrompt}
-              className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-surface-variant transition-colors text-on-surface-variant"
-            >
-              <span className="material-symbols-outlined text-sm">close</span>
-            </button>
-          </header>
-          <div className="flex-1 overflow-y-auto p-6 space-y-6 no-scrollbar">
-            <section className="space-y-3">
-              <div className="flex items-center gap-2">
-                <span className="w-1.5 h-6 bg-primary rounded-full" />
-                <h3 className="font-headline text-lg font-semibold text-on-surface">Release</h3>
-              </div>
-              <p className="text-sm leading-6 text-on-surface-variant">
-                {availableUpdate
-                  ? `Current version ${availableUpdate.currentVersion} can be updated to ${availableUpdate.version}.`
-                  : "An update is available for this app."}
-              </p>
-              {availableUpdate?.releaseNotes && (
-                <div className="rounded-xl bg-surface-container px-4 py-4">
-                  <p className="text-sm text-on-surface-variant whitespace-pre-wrap leading-6">
-                    {availableUpdate.releaseNotes}
-                  </p>
-                </div>
-              )}
-            </section>
-            <div className="flex justify-end gap-3 pt-4 border-t border-outline-variant/40">
-              {availableUpdate?.releaseUrl && (
-                <button
-                  type="button"
-                  className="px-4 py-2 rounded-md text-on-surface hover:bg-surface-container transition-colors"
-                  onClick={() => void TauriCommands.openUrl(availableUpdate.releaseUrl!)}
-                >
-                  Release Notes
-                </button>
-              )}
-              <button
-                type="button"
-                className="px-4 py-2 rounded-md text-on-surface hover:bg-surface-container transition-colors"
-                onClick={dismissPrompt}
-              >
-                Later
-              </button>
-              <button
-                type="button"
-                className="px-5 py-2.5 rounded-xl bg-primary text-on-primary font-semibold hover:bg-primary-dim transition-colors"
-                onClick={() => void handleInstallUpdate()}
-              >
-                Update and Restart
-              </button>
-            </div>
-          </div>
-        </div>
-      </Modal>
+        onInstall={() => void handleInstallUpdate()}
+        onOpenReleaseNotes={(url) => void TauriCommands.openUrl(url)}
+      />
 
-      <Modal
-        open={!!deleteConfirm}
+      <DeleteProfileDialog
+        profile={deleteConfirm}
         onClose={() => setDeleteConfirm(null)}
-        size="sm"
-        showClose={false}
-      >
-        <div className="flex flex-col h-full max-h-[90vh]">
-          <header className="px-6 py-5 flex items-center justify-between border-b border-outline-variant/40 bg-surface-container-highest/30 shrink-0">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-md bg-error/10 flex items-center justify-center text-error">
-                <span className="material-symbols-outlined">delete</span>
-              </div>
-              <div>
-                <h2 className="font-headline text-xl font-bold text-on-surface">Delete Profile</h2>
-                <p className="text-[13px] text-on-surface-variant font-label">This action cannot be undone</p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setDeleteConfirm(null)}
-              className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-surface-variant transition-colors text-on-surface-variant"
-            >
-              <span className="material-symbols-outlined text-sm">close</span>
-            </button>
-          </header>
-          <div className="flex-1 overflow-y-auto p-6 space-y-6 no-scrollbar">
-            <section className="space-y-3">
-              <div className="flex items-center gap-2">
-                <span className="w-1.5 h-6 bg-error rounded-full"></span>
-                <h3 className="font-headline text-lg font-semibold text-on-surface">Confirmation</h3>
-              </div>
-              <p className="text-sm leading-6 text-on-surface-variant">
-                Are you sure you want to delete "{deleteConfirm?.name}"? This profile, related runtime state, and cached credentials will be removed from the app.
-              </p>
-            </section>
-            <div className="flex justify-end gap-3 pt-4 border-t border-outline-variant/40">
-              <button className="px-4 py-2 rounded-md text-on-surface hover:bg-surface-container transition-colors" onClick={() => setDeleteConfirm(null)}>
-              Cancel
-            </button>
-              <button className="px-5 py-2.5 rounded-xl bg-error text-on-error font-semibold hover:bg-error/90 transition-colors" onClick={confirmDelete}>
-              Delete
-            </button>
-          </div>
-          </div>
-        </div>
-      </Modal>
+        onConfirm={confirmDelete}
+      />
 
       {/* Toasts */}
       <ToastContainer />
@@ -1232,27 +866,3 @@ function App() {
 }
 
 export default App;
-
-function FilterMenuItem({
-  label,
-  active,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`
-        w-full flex items-center justify-between px-4 py-2 text-[13px] font-medium text-left transition-colors
-        hover:bg-surface-container
-        ${active ? "text-primary" : "text-on-surface"}
-      `}
-    >
-      {label}
-      {active && <span className="material-symbols-outlined text-[16px]">check</span>}
-    </button>
-  );
-}

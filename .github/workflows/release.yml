@@ -115,14 +115,14 @@ jobs:
           - platform_name: windows-aarch64
             runner: windows-11-arm
             rust_target: aarch64-pc-windows-msvc
-            bundle_target: msi
-            bundle_glob: src-tauri/target/aarch64-pc-windows-msvc/release/bundle/msi/*.msi
+            bundle_target: nsis
+            bundle_glob: src-tauri/target/aarch64-pc-windows-msvc/release/bundle/nsis/*.exe
             extra_asset_glob: ""
           - platform_name: windows-x86_64
             runner: windows-latest
             rust_target: x86_64-pc-windows-msvc
-            bundle_target: msi
-            bundle_glob: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+            bundle_target: nsis
+            bundle_glob: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
             extra_asset_glob: ""
 
     runs-on: ${{ matrix.runner }}

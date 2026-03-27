@@ -98,8 +98,8 @@ pub(super) fn resolve_ssh_binary() -> Result<PathBuf, String> {
         .ok_or_else(ssh_not_found_message)
 }
 
-pub(super) fn build_ssh_args(profile: &TunnelProfile) -> Vec<String> {
-    let mut args = vec![
+fn base_ssh_args() -> Vec<String> {
+    vec![
         "-N".to_string(),
         "-o".to_string(),
         "ExitOnForwardFailure=yes".to_string(),
@@ -115,13 +115,17 @@ pub(super) fn build_ssh_args(profile: &TunnelProfile) -> Vec<String> {
         "BatchMode=no".to_string(),
         "-o".to_string(),
         "NumberOfPasswordPrompts=1".to_string(),
-    ];
+    ]
+}
 
-    if profile.ssh_port != 22 {
+fn push_port_arg(args: &mut Vec<String>, port: u16) {
+    if port != 22 {
         args.push("-p".to_string());
-        args.push(profile.ssh_port.to_string());
+        args.push(port.to_string());
     }
+}
 
+fn push_mode_args(args: &mut Vec<String>, profile: &TunnelProfile) {
     match profile.mode.as_str() {
         "LOCAL" => {
             if let (Some(local_port), Some(remote_port)) = (profile.local_port, profile.remote_port)
@@ -153,13 +157,20 @@ pub(super) fn build_ssh_args(profile: &TunnelProfile) -> Vec<String> {
         }
         _ => {}
     }
+}
 
-    if let Some(ref key_path) = profile.private_key_path {
-        if !key_path.is_empty() {
-            args.push("-i".to_string());
-            args.push(key_path.clone());
-        }
+fn push_key_arg(args: &mut Vec<String>, key_path: Option<&String>) {
+    if let Some(key_path) = key_path.filter(|value| !value.is_empty()) {
+        args.push("-i".to_string());
+        args.push(key_path.clone());
     }
+}
+
+pub(super) fn build_ssh_args(profile: &TunnelProfile) -> Vec<String> {
+    let mut args = base_ssh_args();
+    push_port_arg(&mut args, profile.ssh_port);
+    push_mode_args(&mut args, profile);
+    push_key_arg(&mut args, profile.private_key_path.as_ref());
 
     args.push(format!("{}@{}", profile.username, profile.ssh_host));
     args
@@ -169,19 +180,23 @@ pub(super) fn shell_escape_single_quotes(value: &str) -> String {
     value.replace('\'', "'\"'\"'")
 }
 
+fn write_text_file(path: &Path, contents: &str) -> Result<(), String> {
+    fs::write(path, contents).map_err(|e| e.to_string())
+}
+
 pub(super) fn create_askpass_assets(password: &str) -> Result<AskpassAssets, String> {
     let assets_dir =
         std::env::temp_dir().join(format!("tunnel-manager-askpass-{}", Uuid::new_v4()));
     fs::create_dir_all(&assets_dir).map_err(|e| e.to_string())?;
 
     let password_file = assets_dir.join("password.txt");
-    fs::write(&password_file, password).map_err(|e| e.to_string())?;
+    write_text_file(&password_file, password)?;
 
     #[cfg(target_os = "windows")]
     {
         let script_path = assets_dir.join("askpass.cmd");
         let script_content = format!("@echo off\r\ntype \"{}\"\r\n", password_file.display());
-        fs::write(&script_path, script_content).map_err(|e| e.to_string())?;
+        write_text_file(&script_path, &script_content)?;
 
         return Ok(AskpassAssets {
             command_path: script_path,
@@ -195,9 +210,7 @@ pub(super) fn create_askpass_assets(password: &str) -> Result<AskpassAssets, Str
         let escaped_password_file = shell_escape_single_quotes(&password_file.to_string_lossy());
         let script_content = format!("#!/bin/bash\ncat '{escaped_password_file}'\n");
 
-        let mut file = fs::File::create(&script_path).map_err(|e| e.to_string())?;
-        std::io::Write::write_all(&mut file, script_content.as_bytes())
-            .map_err(|e| e.to_string())?;
+        write_text_file(&script_path, &script_content)?;
         #[cfg(unix)]
         fs::set_permissions(&script_path, fs::Permissions::from_mode(0o700))
             .map_err(|e| e.to_string())?;

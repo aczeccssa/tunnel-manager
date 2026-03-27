@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type MouseEvent } from "react";
 import type { TunnelProfile, RuntimeStatus } from "../types";
 
 interface ProfileCardProps {
@@ -67,7 +67,7 @@ export function ProfileCard({
     return "bg-surface-variant text-on-surface-variant";
   };
 
-  const handleToggle = (e: React.MouseEvent) => {
+  const handleToggle = (e: MouseEvent) => {
     e.stopPropagation();
     if (isRunning || isConnecting || isStopping) {
       if (!isStopping) onStop();

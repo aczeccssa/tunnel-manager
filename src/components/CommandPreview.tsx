@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { writeClipboardText } from "../lib/app-support";
 
 interface CommandPreviewProps {
   command: string;
@@ -9,20 +10,9 @@ export function CommandPreview({ command, className = "" }: CommandPreviewProps)
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(command);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      const el = document.createElement("textarea");
-      el.value = command;
-      document.body.appendChild(el);
-      el.select();
-      document.execCommand("copy");
-      document.body.removeChild(el);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
+    await writeClipboardText(command);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (

@@ -1,0 +1,16 @@
+version: "1.0"
+linter: jetbrains/qodana-js:2025.1
+
+bootstrap: |
+  npm ci
+
+exclude:
+  - name: All
+    paths:
+      - .git
+      - .github
+      - .local
+      - dist
+      - node_modules
+      - release
+      - src-tauri

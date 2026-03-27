@@ -70,7 +70,7 @@ impl OnboardingStateStore {
         }
 
         let raw = serde_json::to_string_pretty(state).map_err(|e| e.to_string())?;
-        fs::write(&self.path, raw).map_err(|e| e.to_string())
+        persist_onboarding_state(&self.path, &raw)
     }
 
     pub fn set_dev_show_on_every_launch(&self, enabled: bool) -> Result<(), String> {
@@ -82,6 +82,10 @@ impl OnboardingStateStore {
     pub fn get_dev_show_on_every_launch(&self) -> bool {
         self.state.lock().dev_show_on_every_launch
     }
+}
+
+fn persist_onboarding_state(path: &PathBuf, raw: &str) -> Result<(), String> {
+    fs::write(path, raw).map_err(|e| e.to_string())
 }
 
 #[derive(Debug, Deserialize)]
@@ -115,14 +119,17 @@ pub fn setup_initial_windows(app: &AppHandle) -> Result<(), String> {
 
     if onboarding_state.has_seen() && !onboarding_state.should_force_show_in_dev() {
         show_main_window(app, menu_bar_state.inner().as_ref())?;
-    } else {
-        if let Ok(window) = main_window(app) {
-            window.hide().map_err(|e| e.to_string())?;
-        }
-        create_or_focus_onboarding_window(app)?;
-        #[cfg(target_os = "macos")]
-        app.set_dock_visibility(true).map_err(|e| e.to_string())?;
+        return Ok(());
     }
+
+    if let Ok(window) = main_window(app) {
+        if let Err(err) = window.hide() {
+            tracing::warn!("Failed to hide main window before onboarding: {err}");
+        }
+    }
+    create_or_focus_onboarding_window(app)?;
+    #[cfg(target_os = "macos")]
+    app.set_dock_visibility(true).map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -151,7 +158,9 @@ pub fn complete_onboarding(
     open_main_window_with_action(&app, menu_bar_state.inner().as_ref(), navigation)?;
 
     if let Some(window) = onboarding_window(&app) {
-        window.close().map_err(|e| e.to_string())?;
+        if let Err(err) = window.close() {
+            tracing::warn!("Failed to close onboarding window: {err}");
+        }
     }
 
     Ok(())

@@ -1,8 +1,7 @@
 import { useEffect, useRef } from "react";
 import { TauriCommands } from "../TauriCommands";
-import { useRuntimeStore, useLogsStore } from "../store";
-import { useToastStore } from "../components/ui/Toast";
-import { useProfileStore } from "../store";
+import { useToastStore } from "../components/ui";
+import { useLogsStore, useProfileStore, useRuntimeStore } from "../store";
 
 const POLL_INTERVAL = 3000; // 3 seconds
 

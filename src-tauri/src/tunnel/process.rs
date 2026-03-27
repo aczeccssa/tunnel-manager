@@ -32,19 +32,28 @@ pub(super) fn spawn_stderr_reader(
 ) {
     thread::spawn(move || {
         let mut chunk = [0u8; 1024];
-        loop {
-            match stderr.read(&mut chunk) {
-                Ok(0) => break,
-                Ok(read) => {
-                    let text = String::from_utf8_lossy(&chunk[..read]).to_string();
-                    let mut stderr_tail = buffer.lock();
-                    append_stderr_tail(&mut stderr_tail, &text);
-                    *last_error.lock() = extract_last_error(&stderr_tail);
-                }
-                Err(_) => break,
-            }
+        while let Some(read) = next_stderr_chunk(&mut stderr, &mut chunk) {
+            // Keep a short rolling tail so failures still surface after the process exits.
+            let text = String::from_utf8_lossy(&chunk[..read]).to_string();
+            let mut stderr_tail = buffer.lock();
+            append_stderr_tail(&mut stderr_tail, &text);
+            *last_error.lock() = extract_last_error(&stderr_tail);
         }
     });
+}
+
+fn next_stderr_chunk(
+    stderr: &mut (impl Read + Send + 'static),
+    chunk: &mut [u8; 1024],
+) -> Option<usize> {
+    match stderr.read(chunk) {
+        Ok(0) => None,
+        Ok(read) => Some(read),
+        Err(err) => {
+            warn!("Failed to read ssh stderr: {err}");
+            None
+        }
+    }
 }
 
 pub(super) fn connectable_local_addr(bind_host: Option<&str>, port: u16) -> Option<SocketAddr> {

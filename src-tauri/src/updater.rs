@@ -68,37 +68,25 @@ fn normalize_version(value: &str) -> Result<semver::Version, String> {
     semver::Version::parse(value.trim_start_matches('v')).map_err(|e| e.to_string())
 }
 
-async fn github_client() -> Result<reqwest::Client, String> {
+fn build_github_client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .build()
         .map_err(|e| e.to_string())
 }
 
-async fn fetch_github_release(channel: &str) -> Result<GithubRelease, String> {
+fn updater_repo() -> Result<(&'static str, &'static str), String> {
     let owner = updater_repo_owner()
         .ok_or_else(|| "TAURI_UPDATER_REPO_OWNER is not configured".to_string())?;
     let repo = updater_repo_name()
         .ok_or_else(|| "TAURI_UPDATER_REPO_NAME is not configured".to_string())?;
-    let client = github_client().await?;
+    Ok((owner, repo))
+}
 
-    if channel == "stable" {
-        let url = format!("{GITHUB_API_BASE}/repos/{owner}/{repo}/releases/latest");
-        return client
-            .get(url)
-            .header(USER_AGENT, "tunnel-manager-updater")
-            .header(ACCEPT, "application/vnd.github+json")
-            .send()
-            .await
-            .map_err(|e| e.to_string())?
-            .error_for_status()
-            .map_err(|e| e.to_string())?
-            .json::<GithubRelease>()
-            .await
-            .map_err(|e| e.to_string());
-    }
-
-    let url = format!("{GITHUB_API_BASE}/repos/{owner}/{repo}/releases?per_page=20");
-    let releases = client
+async fn github_request(
+    client: &reqwest::Client,
+    url: String,
+) -> Result<reqwest::Response, String> {
+    client
         .get(url)
         .header(USER_AGENT, "tunnel-manager-updater")
         .header(ACCEPT, "application/vnd.github+json")
@@ -106,10 +94,48 @@ async fn fetch_github_release(channel: &str) -> Result<GithubRelease, String> {
         .await
         .map_err(|e| e.to_string())?
         .error_for_status()
-        .map_err(|e| e.to_string())?
-        .json::<Vec<GithubRelease>>()
+        .map_err(|e| e.to_string())
+}
+
+async fn github_json<T: serde::de::DeserializeOwned>(
+    client: &reqwest::Client,
+    url: String,
+) -> Result<T, String> {
+    github_request(client, url)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?
+        .json::<T>()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+async fn fetch_latest_release(
+    client: &reqwest::Client,
+    owner: &str,
+    repo: &str,
+) -> Result<GithubRelease, String> {
+    let url = format!("{GITHUB_API_BASE}/repos/{owner}/{repo}/releases/latest");
+    github_json(client, url).await
+}
+
+async fn fetch_release_list(
+    client: &reqwest::Client,
+    owner: &str,
+    repo: &str,
+) -> Result<Vec<GithubRelease>, String> {
+    let url = format!("{GITHUB_API_BASE}/repos/{owner}/{repo}/releases?per_page=20");
+    github_json(client, url).await
+}
+
+async fn fetch_github_release(channel: &str) -> Result<GithubRelease, String> {
+    let (owner, repo) = updater_repo()?;
+    let client = build_github_client()?;
+
+    if channel == "stable" {
+        return fetch_latest_release(&client, owner, repo).await;
+    }
+
+    let releases = fetch_release_list(&client, owner, repo).await?;
 
     releases
         .into_iter()

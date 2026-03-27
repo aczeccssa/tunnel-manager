@@ -30,16 +30,9 @@ use tunnel::{
 use updater::{check_for_app_update, download_and_install_app_update, get_app_version};
 use windowing::{take_pending_main_window_action, PendingNavigationState, ONBOARDING_WINDOW_LABEL};
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
-    let app_data = dirs::data_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("tunnel-manager");
-
-    fs::create_dir_all(&app_data).ok();
-
-    let file_appender = tracing_appender::rolling::daily(&app_data, "tunnel-manager.log");
-    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+fn init_logging(app_data: &PathBuf) -> tracing_appender::non_blocking::WorkerGuard {
+    let file_appender = tracing_appender::rolling::daily(app_data, "tunnel-manager.log");
+    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
     tracing_subscriber::fmt()
         .with_writer(non_blocking)
@@ -51,13 +44,16 @@ pub fn run() {
         )
         .init();
 
-    let app_state = Arc::new(AppState::default());
-    let menu_bar_state = Arc::new(MenuBarState::default());
-    let onboarding_state = Arc::new(OnboardingStateStore::new(onboarding_state_path(&app_data)));
-    let pending_navigation = Arc::new(PendingNavigationState::default());
-    let app_state_for_run = Arc::clone(&app_state);
+    guard
+}
 
-    let app = tauri::Builder::default()
+fn configure_builder(
+    app_state: Arc<AppState>,
+    menu_bar_state: Arc<MenuBarState>,
+    onboarding_state: Arc<OnboardingStateStore>,
+    pending_navigation: Arc<PendingNavigationState>,
+) -> tauri::Builder<tauri::Wry> {
+    tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_store::Builder::default().build())
@@ -69,34 +65,11 @@ pub fn run() {
         .manage(Arc::clone(&menu_bar_state))
         .manage(Arc::clone(&onboarding_state))
         .manage(Arc::clone(&pending_navigation))
-        .setup(|app| {
-            {
-                let menu_bar_state = app.state::<Arc<MenuBarState>>();
-                let mut status = menu_bar_state.status.lock();
-                *status = "Idle".to_string();
-            }
-
-            build_menu_bar(app.handle())?;
-            set_menu_bar_visible(app.handle(), true)?;
-            setup_initial_windows(app.handle())?;
-
-            Ok(())
-        })
+        .setup(handle_builder_setup)
         .on_menu_event(|app, event| {
             handle_menu_event(app, &event);
         })
-        .on_window_event(|window, event| {
-            if matches!(event, WindowEvent::CloseRequested { .. })
-                && window.label() == ONBOARDING_WINDOW_LABEL
-            {
-                if let Err(err) = handle_onboarding_window_close(window.app_handle()) {
-                    tracing::warn!("Failed to finish onboarding close flow: {err}");
-                }
-                return;
-            }
-
-            handle_window_event(window, event);
-        })
+        .on_window_event(handle_app_window_event)
         .invoke_handler(tauri::generate_handler![
             get_ssh_binary_path,
             get_ssh_version,
@@ -122,8 +95,58 @@ pub fn run() {
             check_for_app_update,
             download_and_install_app_update,
         ])
-        .build(tauri::generate_context!())
-        .expect("error while building tauri application");
+}
+
+fn handle_builder_setup(
+    app: &mut tauri::App<tauri::Wry>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let menu_bar_state = app.state::<Arc<MenuBarState>>();
+    let mut status = menu_bar_state.status.lock();
+    *status = "Idle".to_string();
+    drop(status);
+
+    build_menu_bar(app.handle())?;
+    set_menu_bar_visible(app.handle(), true)?;
+    setup_initial_windows(app.handle())?;
+    Ok(())
+}
+
+fn handle_app_window_event(window: &tauri::Window<tauri::Wry>, event: &WindowEvent) {
+    if matches!(event, WindowEvent::CloseRequested { .. })
+        && window.label() == ONBOARDING_WINDOW_LABEL
+    {
+        if let Err(err) = handle_onboarding_window_close(window.app_handle()) {
+            tracing::warn!("Failed to finish onboarding close flow: {err}");
+        }
+        return;
+    }
+
+    handle_window_event(window, event);
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    let app_data = dirs::data_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("tunnel-manager");
+
+    fs::create_dir_all(&app_data).ok();
+    let _guard = init_logging(&app_data);
+
+    let app_state = Arc::new(AppState::default());
+    let menu_bar_state = Arc::new(MenuBarState::default());
+    let onboarding_state = Arc::new(OnboardingStateStore::new(onboarding_state_path(&app_data)));
+    let pending_navigation = Arc::new(PendingNavigationState::default());
+    let app_state_for_run = Arc::clone(&app_state);
+
+    let app = configure_builder(
+        app_state,
+        menu_bar_state,
+        onboarding_state,
+        pending_navigation,
+    )
+    .build(tauri::generate_context!())
+    .expect("error while building tauri application");
 
     app.run(move |_app, event| {
         if matches!(
