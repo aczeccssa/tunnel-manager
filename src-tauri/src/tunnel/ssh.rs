@@ -184,19 +184,32 @@ fn write_text_file(path: &Path, contents: &str) -> Result<(), String> {
     fs::write(path, contents).map_err(|e| e.to_string())
 }
 
+#[cfg(unix)]
+fn lock_down_path(path: &Path, mode: u32) -> Result<(), String> {
+    fs::set_permissions(path, fs::Permissions::from_mode(mode)).map_err(|e| e.to_string())
+}
+
+#[cfg(not(unix))]
+fn lock_down_path(_path: &Path, _mode: u32) -> Result<(), String> {
+    Ok(())
+}
+
 pub(super) fn create_askpass_assets(password: &str) -> Result<AskpassAssets, String> {
     let assets_dir =
         std::env::temp_dir().join(format!("tunnel-manager-askpass-{}", Uuid::new_v4()));
     fs::create_dir_all(&assets_dir).map_err(|e| e.to_string())?;
-
-    let password_file = assets_dir.join("password.txt");
-    write_text_file(&password_file, password)?;
+    lock_down_path(&assets_dir, 0o700)?;
 
     #[cfg(target_os = "windows")]
     {
+        let password_file = assets_dir.join("password.txt");
+        write_text_file(&password_file, password)?;
+        lock_down_path(&password_file, 0o600)?;
+
         let script_path = assets_dir.join("askpass.cmd");
         let script_content = format!("@echo off\r\ntype \"{}\"\r\n", password_file.display());
         write_text_file(&script_path, &script_content)?;
+        lock_down_path(&script_path, 0o700)?;
 
         return Ok(AskpassAssets {
             command_path: script_path,
@@ -207,13 +220,11 @@ pub(super) fn create_askpass_assets(password: &str) -> Result<AskpassAssets, Str
     #[cfg(not(target_os = "windows"))]
     {
         let script_path = assets_dir.join("askpass.sh");
-        let escaped_password_file = shell_escape_single_quotes(&password_file.to_string_lossy());
-        let script_content = format!("#!/bin/bash\ncat '{escaped_password_file}'\n");
+        let escaped_password = shell_escape_single_quotes(password);
+        let script_content = format!("#!/bin/bash\nprintf '%s\\n' '{escaped_password}'\n");
 
         write_text_file(&script_path, &script_content)?;
-        #[cfg(unix)]
-        fs::set_permissions(&script_path, fs::Permissions::from_mode(0o700))
-            .map_err(|e| e.to_string())?;
+        lock_down_path(&script_path, 0o700)?;
 
         Ok(AskpassAssets {
             command_path: script_path,

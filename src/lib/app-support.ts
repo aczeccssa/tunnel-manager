@@ -1,7 +1,5 @@
 import { z } from "zod";
 import type { MenuBarStatus, TunnelProfile } from "../types";
-
-const DEV_PASSWORD_CACHE_KEY = "tunnel-manager-dev-password-cache";
 const PROFILE_CLIPBOARD_KIND = "tunnel-manager/profile-config";
 const PROFILE_CLIPBOARD_VERSION = 1;
 
@@ -87,36 +85,12 @@ export function getMenuBarStatus(states: Record<string, { status: string | undef
   return "Idle";
 }
 
-export function getDevPasswordCache(isDevBuild: boolean): Record<string, string> {
-  if (!isDevBuild) {
-    return {};
-  }
-
-  try {
-    const raw = window.localStorage.getItem(DEV_PASSWORD_CACHE_KEY);
-    return raw ? (JSON.parse(raw) as Record<string, string>) : {};
-  } catch {
-    return {};
-  }
-}
-
-export function setDevPasswordCache(isDevBuild: boolean, next: Record<string, string>) {
-  if (!isDevBuild) {
-    return;
-  }
-
-  try {
-    window.localStorage.setItem(DEV_PASSWORD_CACHE_KEY, JSON.stringify(next));
-  } catch {
-    // Best-effort cache only; runtime passwords still work without local storage.
-  }
-}
-
 function copyWithLegacyClipboardApi(value: string) {
   const el = document.createElement("textarea");
   el.value = value;
   document.body.appendChild(el);
   el.select();
+  // Tauri exposes navigator.clipboard in normal operation; this remains a narrow fallback for restricted contexts.
   // noinspection JSDeprecatedSymbols
   const copied = document.execCommand("copy");
   document.body.removeChild(el);

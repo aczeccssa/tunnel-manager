@@ -19,12 +19,10 @@ import { STATUS_LABELS } from "./types";
 import {
   buildClipboardPayload,
   clipboardProfileSchema,
-  getDevPasswordCache,
   getMenuBarStatus,
   normalizeTunnelStartError,
   readClipboardText,
   resolveClipboardIconType,
-  setDevPasswordCache,
   writeClipboardText,
 } from "./lib/app-support";
 import type { TunnelProfile, ProfileFormData } from "./types";
@@ -195,22 +193,12 @@ function App() {
 
       if (authType !== "PASSWORD") {
         delete sessionPasswordsRef.current[profileId];
-        if (isDevBuild) {
-          const cache = getDevPasswordCache(isDevBuild);
-          delete cache[profileId];
-          setDevPasswordCache(isDevBuild, cache);
-        }
         await TauriCommands.deleteKeychain(service, account);
         return false;
       }
 
       if (rememberPassword && password) {
         sessionPasswordsRef.current[profileId] = password;
-        if (isDevBuild) {
-          const cache = getDevPasswordCache(isDevBuild);
-          cache[profileId] = password;
-          setDevPasswordCache(isDevBuild, cache);
-        }
         await TauriCommands.storeKeychain(service, account, password);
         return true;
       }
@@ -218,18 +206,8 @@ function App() {
       if (!rememberPassword) {
         if (password) {
           sessionPasswordsRef.current[profileId] = password;
-          if (isDevBuild) {
-            const cache = getDevPasswordCache(isDevBuild);
-            cache[profileId] = password;
-            setDevPasswordCache(isDevBuild, cache);
-          }
         } else {
           delete sessionPasswordsRef.current[profileId];
-          if (isDevBuild) {
-            const cache = getDevPasswordCache(isDevBuild);
-            delete cache[profileId];
-            setDevPasswordCache(isDevBuild, cache);
-          }
         }
         await TauriCommands.deleteKeychain(service, account);
         return false;
@@ -237,11 +215,6 @@ function App() {
 
       if (password) {
         sessionPasswordsRef.current[profileId] = password;
-        if (isDevBuild) {
-          const cache = getDevPasswordCache(isDevBuild);
-          cache[profileId] = password;
-          setDevPasswordCache(isDevBuild, cache);
-        }
       }
       return hasStoredPassword;
     },
@@ -371,11 +344,6 @@ function App() {
         getKeychainService(deleteConfirm.id),
         getPasswordAccount(deleteConfirm.id)
       );
-      if (isDevBuild) {
-        const cache = getDevPasswordCache(isDevBuild);
-        delete cache[deleteConfirm.id];
-        setDevPasswordCache(isDevBuild, cache);
-      }
       addToast({ message: "Profile deleted", type: "info" });
       setDeleteConfirm(null);
     }
@@ -475,10 +443,6 @@ function App() {
 
           if (!password) {
             password = sessionPasswordsRef.current[profile.id];
-          }
-
-          if (!password && isDevBuild) {
-            password = getDevPasswordCache(isDevBuild)[profile.id];
           }
 
           if (!password) {

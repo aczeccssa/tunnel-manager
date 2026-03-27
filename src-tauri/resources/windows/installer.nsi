@@ -64,7 +64,7 @@ Var WixMode
 Var OldMainBinaryName
 
 Name "${PRODUCTNAME}"
-BrandingText "TunnelArch for Windows"
+BrandingText "SSH Tunnel Manager"
 OutFile "${OUTFILE}"
 
 !define PLACEHOLDER_INSTALL_DIR "placeholder\${PRODUCTNAME}"
@@ -134,7 +134,7 @@ InstProgressFlags smooth colored
 !define MUI_HEADER_TRANSPARENT_TEXT
 !define MUI_HEADER_TEXT_COLOR "DDE5FF"
 
-!define MUI_WELCOMEPAGE_TITLE "TunnelArch, ready in a minute."
+!define MUI_WELCOMEPAGE_TITLE "SSH Tunnel Manager, ready in a minute."
 !define MUI_WELCOMEPAGE_TITLE_3LINES
 !define MUI_WELCOMEPAGE_TEXT "Install SSH Tunnel Manager with the same focused, low-friction setup language used inside the app. When setup finishes, open the app and create your first tunnel."
 

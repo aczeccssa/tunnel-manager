@@ -367,7 +367,8 @@ mod tests {
 
     #[test]
     fn creates_platform_specific_askpass_assets() {
-        let assets = create_askpass_assets("secret-value").expect("askpass assets");
+        let password = uuid::Uuid::new_v4().to_string();
+        let assets = create_askpass_assets(&password).expect("askpass assets");
 
         assert!(assets.command_path.exists());
         assert!(assets.cleanup_path.exists());
@@ -385,7 +386,8 @@ mod tests {
                 Some("sh")
             );
             let script = fs::read_to_string(&assets.command_path).expect("read script");
-            assert!(script.contains("cat '"));
+            assert!(script.contains("printf '%s\\n' '"));
+            assert!(script.contains(&password));
         }
 
         fs::remove_dir_all(assets.cleanup_path).expect("cleanup askpass");
