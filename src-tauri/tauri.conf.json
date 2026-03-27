@@ -10,6 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "title": "SSH Tunnel Manager",
@@ -17,6 +18,7 @@
         "height": 700,
         "minWidth": 700,
         "minHeight": 500,
+        "visible": false,
         "resizable": true,
         "center": true,
         "hiddenTitle": true,

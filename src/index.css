@@ -65,6 +65,13 @@
 
   --animate-fade-in: fadeIn 0.2s ease-out;
   --animate-slide-up: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-guide-copy-enter: guideCopyEnter 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  --animate-guide-icon-enter: guideIconEnter 0.36s cubic-bezier(0.22, 1, 0.36, 1);
+  --animate-panel-entrance: panelEntrance 0.34s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-modal-backdrop-enter: modalBackdropEnter 0.22s ease-out forwards;
+  --animate-modal-backdrop-exit: modalBackdropExit 0.18s ease-in forwards;
+  --animate-modal-panel-enter: modalPanelEnter 0.24s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  --animate-modal-panel-exit: modalPanelExit 0.18s ease-in forwards;
 }
 
 @layer utilities {
@@ -76,6 +83,40 @@
   }
   .font-label {
     font-family: var(--font-label);
+  }
+  .panel-interactive {
+    transition:
+      transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 220ms cubic-bezier(0.22, 1, 0.36, 1),
+      background-color 220ms ease,
+      border-color 220ms ease;
+  }
+  .panel-interactive:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 18px 38px -24px rgb(0 0 0 / 0.4);
+  }
+  .panel-entrance {
+    animation: var(--animate-panel-entrance);
+  }
+  .guide-copy-enter {
+    animation: var(--animate-guide-copy-enter);
+  }
+  .guide-icon-enter {
+    animation: var(--animate-guide-icon-enter);
+  }
+  .modal-backdrop-enter {
+    animation: var(--animate-modal-backdrop-enter);
+  }
+  .modal-backdrop-exit {
+    animation: var(--animate-modal-backdrop-exit);
+  }
+  .modal-panel-enter {
+    animation: var(--animate-modal-panel-enter);
+    will-change: transform, opacity;
+  }
+  .modal-panel-exit {
+    animation: var(--animate-modal-panel-exit);
+    will-change: transform, opacity;
   }
 }
 
@@ -131,4 +172,39 @@
 @keyframes slideUp {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes guideCopyEnter {
+  from { opacity: 0; transform: translateX(10px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes guideIconEnter {
+  from { opacity: 0; transform: translateX(18px) scale(0.96); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+@keyframes panelEntrance {
+  from { opacity: 0; transform: translateY(12px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes modalBackdropEnter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modalBackdropExit {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes modalPanelEnter {
+  from { opacity: 0; transform: translateY(18px) scale(0.975); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes modalPanelExit {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(10px) scale(0.985); }
 }

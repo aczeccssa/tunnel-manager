@@ -1,0 +1,31 @@
+<svg width="150" height="57" viewBox="0 0 150 57" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="shell" x1="11" y1="2" x2="140" y2="66" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#111A33"/>
+      <stop offset="0.56" stop-color="#0A1430"/>
+      <stop offset="1" stop-color="#070E1D"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="81" y1="8" x2="154" y2="61" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7E8CFF" stop-opacity="0.42"/>
+      <stop offset="1" stop-color="#7E8CFF" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="card" x1="20" y1="8" x2="59" y2="46" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7280FF"/>
+      <stop offset="0.58" stop-color="#5A57EA"/>
+      <stop offset="1" stop-color="#3F2EB8"/>
+    </linearGradient>
+    <linearGradient id="beam" x1="36" y1="19" x2="40" y2="35" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F7F9FF"/>
+      <stop offset="1" stop-color="#CFD8FF"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="150" height="57" rx="10" fill="#0A1224"/>
+  <rect x="4.5" y="4.5" width="141" height="48" rx="14" fill="url(#shell)" stroke="#314774"/>
+  <circle cx="132" cy="15" r="23" fill="url(#glow)"/>
+  <rect x="17" y="12" width="30" height="30" rx="10" fill="url(#card)"/>
+  <path d="M25.8 18.5H44.4V22.8H36.8V35.7L31 33.2V22.8H25.8V18.5Z" fill="url(#beam)"/>
+  <path d="M61 18.5H126" stroke="#95ABDE" stroke-width="1.4" stroke-linecap="round" opacity="0.7"/>
+  <path d="M61 28.5H113" stroke="#C0C1FF" stroke-width="4.2" stroke-linecap="round"/>
+  <path d="M61 38.5H96" stroke="#5F75A5" stroke-width="1.6" stroke-linecap="round"/>
+</svg>

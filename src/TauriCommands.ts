@@ -51,6 +51,11 @@ export interface MenuBarTunnelProfile {
   canStop: boolean;
 }
 
+export type OnboardingAction = "continue" | "create_profile" | "open_settings";
+export interface MainWindowNavigationPayload {
+  action: "open_settings" | "create_profile";
+}
+
 function normalizeOptional(value?: string): string | undefined {
   if (value === undefined) return undefined;
   const trimmed = value.trim();
@@ -136,6 +141,21 @@ export const TauriCommands = {
 
   syncMenuBarProfiles: (profiles: MenuBarTunnelProfile[]) =>
     invoke<void>("sync_menu_bar_profiles", { profiles }),
+
+  completeOnboarding: (action: OnboardingAction) =>
+    invoke<void>("complete_onboarding", { action }),
+
+  reopenOnboarding: () =>
+    invoke<void>("reopen_onboarding"),
+
+  takePendingMainWindowAction: () =>
+    invoke<MainWindowNavigationPayload | null>("take_pending_main_window_action"),
+
+  getDevShowGuideOnLaunch: () =>
+    invoke<boolean>("get_dev_show_guide_on_launch"),
+
+  setDevShowGuideOnLaunch: (enabled: boolean) =>
+    invoke<void>("set_dev_show_guide_on_launch", { enabled }),
 
   restartApp: () => relaunch(),
 };

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type MouseEvent } from "react";
 import type { TunnelProfile, RuntimeStatus } from "../types";
 
 interface ProfileCardProps {
@@ -9,6 +9,7 @@ interface ProfileCardProps {
   onStop: () => void;
   onEdit: () => void;
   onDuplicate: () => void;
+  onCopyConfig: () => void;
   onDelete: () => void;
   onViewLogs: () => void;
   viewMode?: "list" | "grid";
@@ -22,6 +23,7 @@ export function ProfileCard({
   onStop,
   onEdit,
   onDuplicate,
+  onCopyConfig,
   onDelete,
   onViewLogs,
   viewMode = "list",
@@ -65,7 +67,7 @@ export function ProfileCard({
     return "bg-surface-variant text-on-surface-variant";
   };
 
-  const handleToggle = (e: React.MouseEvent) => {
+  const handleToggle = (e: MouseEvent) => {
     e.stopPropagation();
     if (isRunning || isConnecting || isStopping) {
       if (!isStopping) onStop();
@@ -75,7 +77,7 @@ export function ProfileCard({
   };
 
   return (
-    <div className={`bg-surface-container-low hover:bg-surface-container transition-all group rounded-xl p-5 flex ${isGrid ? "flex-col items-start gap-4" : "items-center justify-between"}`}>
+    <div className={`bg-surface-container-low hover:bg-surface-container group rounded-xl p-5 flex panel-interactive panel-entrance ${isGrid ? "flex-col items-start gap-4" : "items-center justify-between"}`}>
       <div className={`flex items-center gap-5 ${isGrid ? "w-full" : ""}`}>
         <div className="relative flex-shrink-0">
           <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${isRunning || isConnecting ? "bg-surface-container-highest text-primary" : "bg-surface-container-highest text-on-surface-variant"}`}>
@@ -162,7 +164,8 @@ export function ProfileCard({
               <>
                 <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setMenuOpen(false); }} />
                 <div className="absolute right-0 bottom-0 z-20 bg-surface-container-highest border border-outline-variant/40 rounded-xl shadow-[0_24px_40px_-12px_rgba(0,0,0,0.45)] py-1.5 min-w-[180px] overflow-hidden backdrop-blur-xl">
-                  <MenuItem icon="content_copy" label="Duplicate" onClick={() => { onDuplicate(); setMenuOpen(false); }} />
+                  <MenuItem icon="copy_all" label="Duplicate" onClick={() => { onDuplicate(); setMenuOpen(false); }} />
+                  <MenuItem icon="content_copy" label="Copy Config" onClick={() => { onCopyConfig(); setMenuOpen(false); }} />
                   <MenuItem icon="edit" label="Edit" onClick={() => { onEdit(); setMenuOpen(false); }} />
                   <MenuItem icon="terminal" label="Logs" onClick={() => { onViewLogs(); setMenuOpen(false); }} />
                   <div className="h-px bg-outline-variant/40 my-1 mx-2" />

@@ -102,7 +102,7 @@ export function PasswordPrompt({
             <button
               type="submit"
               disabled={loading || !password}
-              className="bg-gradient-to-br from-primary to-primary-container text-on-primary font-semibold px-5 py-2.5 rounded-xl flex items-center gap-2 hover:opacity-90 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
+              className="bg-primary text-on-primary font-semibold px-5 py-2.5 rounded-xl flex items-center gap-2 shadow-lg shadow-primary/20 hover:bg-primary-dim active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
             >
               <span className="material-symbols-outlined text-lg">lock_open</span>
               {loading ? "Starting..." : "Start Tunnel"}

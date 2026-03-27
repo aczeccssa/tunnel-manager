@@ -1,24 +1,27 @@
+mod process;
+mod ssh;
+
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs;
-use std::io::{Read, Write as IoWrite};
-use std::net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
+use std::net::TcpListener;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
-use std::thread;
 use std::time::{Duration, Instant};
 use tauri::State;
-use tracing::{error, warn};
-use uuid::Uuid;
+use tracing::error;
 
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
+use self::process::{
+    cleanup_askpass_script, running_tunnel_status, spawn_stderr_reader, terminate_tunnel_process,
+};
+use self::ssh::{build_ssh_args, create_askpass_assets, normalize_spawn_error, resolve_ssh_binary};
 
 const STDERR_TAIL_LIMIT: usize = 8192;
 const REMOTE_READY_DELAY: Duration = Duration::from_millis(800);
 const LOCAL_READY_TIMEOUT: Duration = Duration::from_secs(15);
+const WINDOWS_OPENSSH_INSTALL_URL: &str =
+    "https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh_install_firstuse";
 
 pub struct AppState {
     processes: Mutex<HashMap<String, ManagedTunnel>>,
@@ -80,197 +83,6 @@ pub struct TunnelStatus {
     pub stderr_tail: Option<String>,
 }
 
-fn get_ssh_binary() -> String {
-    "/usr/bin/ssh".to_string()
-}
-
-fn build_ssh_args(profile: &TunnelProfile) -> Vec<String> {
-    let mut args = vec![
-        "-N".to_string(),
-        "-o".to_string(),
-        "ExitOnForwardFailure=yes".to_string(),
-        "-o".to_string(),
-        "ServerAliveInterval=60".to_string(),
-        "-o".to_string(),
-        "ServerAliveCountMax=3".to_string(),
-        "-o".to_string(),
-        "StrictHostKeyChecking=no".to_string(),
-        "-o".to_string(),
-        "LogLevel=ERROR".to_string(),
-        "-o".to_string(),
-        "BatchMode=no".to_string(),
-        "-o".to_string(),
-        "NumberOfPasswordPrompts=1".to_string(),
-    ];
-
-    if profile.ssh_port != 22 {
-        args.push("-p".to_string());
-        args.push(profile.ssh_port.to_string());
-    }
-
-    match profile.mode.as_str() {
-        "LOCAL" => {
-            if let (Some(local_port), Some(remote_port)) = (profile.local_port, profile.remote_port)
-            {
-                let local_bind = profile.local_bind_host.as_deref().unwrap_or("127.0.0.1");
-                let remote = profile.remote_host.as_deref().unwrap_or("localhost");
-                args.push("-L".to_string());
-                args.push(format!("{local_bind}:{local_port}:{remote}:{remote_port}"));
-            }
-        }
-        "REMOTE" => {
-            if let (Some(remote_port), Some(local_target_port)) =
-                (profile.remote_port, profile.local_target_port)
-            {
-                let remote_bind = profile.remote_bind_host.as_deref().unwrap_or("127.0.0.1");
-                let local_host = profile.local_target_host.as_deref().unwrap_or("localhost");
-                args.push("-R".to_string());
-                args.push(format!(
-                    "{remote_bind}:{remote_port}:{local_host}:{local_target_port}"
-                ));
-            }
-        }
-        "DYNAMIC" => {
-            if let Some(local_port) = profile.local_port {
-                let local_bind = profile.local_bind_host.as_deref().unwrap_or("127.0.0.1");
-                args.push("-D".to_string());
-                args.push(format!("{local_bind}:{local_port}"));
-            }
-        }
-        _ => {}
-    }
-
-    if let Some(ref key_path) = profile.private_key_path {
-        if !key_path.is_empty() {
-            args.push("-i".to_string());
-            args.push(key_path.clone());
-        }
-    }
-
-    args.push(format!("{}@{}", profile.username, profile.ssh_host));
-    args
-}
-
-fn shell_escape_single_quotes(value: &str) -> String {
-    value.replace('\'', "'\"'\"'")
-}
-
-fn create_askpass_script(password: &str) -> Result<PathBuf, String> {
-    let temp_dir = std::env::temp_dir();
-    let script_path = temp_dir.join(format!("tunnel-manager-askpass-{}", Uuid::new_v4()));
-    let escaped = shell_escape_single_quotes(password);
-    let script_content = format!("#!/bin/bash\nprintf '%s\\n' '{escaped}'\n");
-
-    let mut file = fs::File::create(&script_path).map_err(|e| e.to_string())?;
-    file.write_all(script_content.as_bytes())
-        .map_err(|e| e.to_string())?;
-    #[cfg(unix)]
-    fs::set_permissions(&script_path, fs::Permissions::from_mode(0o700))
-        .map_err(|e| e.to_string())?;
-
-    Ok(script_path)
-}
-
-fn append_stderr_tail(buffer: &mut String, chunk: &str) {
-    buffer.push_str(chunk);
-    if buffer.len() > STDERR_TAIL_LIMIT {
-        let trim_at = buffer.len() - STDERR_TAIL_LIMIT;
-        buffer.drain(..trim_at);
-    }
-}
-
-fn extract_last_error(stderr_tail: &str) -> Option<String> {
-    stderr_tail
-        .lines()
-        .rev()
-        .map(str::trim)
-        .find(|line| !line.is_empty())
-        .map(ToOwned::to_owned)
-}
-
-fn spawn_stderr_reader(
-    mut stderr: impl Read + Send + 'static,
-    buffer: Arc<Mutex<String>>,
-    last_error: Arc<Mutex<Option<String>>>,
-) {
-    thread::spawn(move || {
-        let mut chunk = [0u8; 1024];
-        loop {
-            match stderr.read(&mut chunk) {
-                Ok(0) => break,
-                Ok(read) => {
-                    let text = String::from_utf8_lossy(&chunk[..read]).to_string();
-                    let mut stderr_tail = buffer.lock();
-                    append_stderr_tail(&mut stderr_tail, &text);
-                    *last_error.lock() = extract_last_error(&stderr_tail);
-                }
-                Err(_) => break,
-            }
-        }
-    });
-}
-
-fn connectable_local_addr(bind_host: Option<&str>, port: u16) -> Option<SocketAddr> {
-    let host = match bind_host.unwrap_or("127.0.0.1") {
-        "0.0.0.0" | "::" | "" => "127.0.0.1",
-        value => value,
-    };
-
-    (host, port)
-        .to_socket_addrs()
-        .ok()?
-        .find(|addr| matches!(addr, SocketAddr::V4(_) | SocketAddr::V6(_)))
-}
-
-fn is_local_port_ready(bind_host: Option<&str>, port: u16) -> bool {
-    let Some(addr) = connectable_local_addr(bind_host, port) else {
-        return false;
-    };
-
-    TcpStream::connect_timeout(&addr, Duration::from_millis(200)).is_ok()
-}
-
-fn update_ready_state(tunnel: &mut ManagedTunnel) -> bool {
-    if tunnel.ready {
-        return true;
-    }
-
-    let ready = match tunnel.mode.as_str() {
-        "LOCAL" | "DYNAMIC" => match tunnel.local_port {
-            Some(port) => is_local_port_ready(tunnel.local_bind_host.as_deref(), port),
-            None => false,
-        },
-        "REMOTE" => tunnel.started_at.elapsed() >= REMOTE_READY_DELAY,
-        _ => false,
-    };
-
-    tunnel.ready = ready;
-    ready
-}
-
-fn cleanup_askpass_script(script_path: &mut Option<PathBuf>) {
-    if let Some(path) = script_path.take() {
-        let _ = fs::remove_file(path);
-    }
-}
-
-fn terminate_tunnel_process(tunnel: &mut ManagedTunnel) {
-    #[cfg(unix)]
-    {
-        let pid = tunnel.child.id();
-        let _ = unsafe { libc::kill(-(pid as libc::pid_t), libc::SIGTERM) };
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = tunnel.child.kill();
-    }
-
-    if let Err(err) = tunnel.child.wait() {
-        warn!("Error waiting for tunnel process: {err}");
-    }
-    cleanup_askpass_script(&mut tunnel.askpass_script);
-}
-
 pub fn stop_all_tunnels(state: &Arc<AppState>) {
     let mut processes = state.processes.lock();
     for (_, tunnel) in processes.iter_mut() {
@@ -280,13 +92,14 @@ pub fn stop_all_tunnels(state: &Arc<AppState>) {
 }
 
 #[tauri::command]
-pub fn get_ssh_binary_path() -> String {
-    get_ssh_binary()
+pub fn get_ssh_binary_path() -> Result<String, String> {
+    resolve_ssh_binary().map(|path| path.display().to_string())
 }
 
 #[tauri::command]
 pub fn get_ssh_version() -> Result<String, String> {
-    let output = Command::new(get_ssh_binary())
+    let ssh_binary = resolve_ssh_binary()?;
+    let output = Command::new(ssh_binary)
         .arg("-V")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -307,7 +120,8 @@ pub fn start_tunnel(
         return Err("Tunnel is already running".to_string());
     }
 
-    let mut cmd = Command::new(get_ssh_binary());
+    let ssh_binary = resolve_ssh_binary()?;
+    let mut cmd = Command::new(ssh_binary);
     let args = build_ssh_args(&profile);
     tracing::info!("SSH command: {}", args.join(" "));
 
@@ -324,17 +138,20 @@ pub fn start_tunnel(
 
     let mut askpass_script = None;
     if let Some(password) = password {
-        let script_path = create_askpass_script(&password)?;
+        let askpass_assets = create_askpass_assets(&password)?;
         let display = std::env::var("DISPLAY").unwrap_or_else(|_| "tauri".to_string());
         cmd.env("DISPLAY", display);
-        cmd.env("SSH_ASKPASS", script_path.display().to_string());
+        cmd.env(
+            "SSH_ASKPASS",
+            askpass_assets.command_path.display().to_string(),
+        );
         cmd.env("SSH_ASKPASS_REQUIRE", "force");
-        askpass_script = Some(script_path);
+        askpass_script = Some(askpass_assets.cleanup_path);
     }
 
     let mut child = cmd.spawn().map_err(|e| {
         error!("Failed to spawn SSH process: {e}");
-        e.to_string()
+        normalize_spawn_error(&e.to_string())
     })?;
 
     let pid = child.id();
@@ -405,44 +222,17 @@ pub fn get_tunnel_status(
     };
 
     match tunnel.child.try_wait() {
-        Ok(Some(exit)) => {
-            if tunnel.mode != "REMOTE"
-                && !tunnel.ready
-                && tunnel.started_at.elapsed() > LOCAL_READY_TIMEOUT
-            {
-                *tunnel.last_error.lock() =
-                    Some("Tunnel did not become ready before timeout".to_string());
-            }
-
-            let last_error = tunnel.last_error.lock().clone().or_else(|| {
-                stderr_tail
-                    .clone()
-                    .and_then(|tail| extract_last_error(&tail))
-            });
-            cleanup_askpass_script(&mut tunnel.askpass_script);
-
-            Ok(TunnelStatus {
-                running: false,
-                pid: Some(pid),
-                exit_code: exit.code(),
-                ready: false,
-                last_error,
-                stderr_tail,
-            })
-        }
+        Ok(Some(exit)) => Ok(process::exited_tunnel_status(
+            &mut tunnel,
+            pid,
+            stderr_tail,
+            exit.code(),
+        )),
         Ok(None) => {
-            let ready = update_ready_state(&mut tunnel);
-            let last_error = tunnel.last_error.lock().clone();
+            let status = running_tunnel_status(&mut tunnel, pid, stderr_tail);
             processes.insert(profile_id, tunnel);
 
-            Ok(TunnelStatus {
-                running: true,
-                pid: Some(pid),
-                exit_code: None,
-                ready,
-                last_error,
-                stderr_tail,
-            })
+            Ok(status)
         }
         Err(err) => {
             cleanup_askpass_script(&mut tunnel.askpass_script);
@@ -459,7 +249,10 @@ pub fn check_port_available(port: u16) -> Result<bool, String> {
 
 #[cfg(test)]
 mod tests {
+    use super::process::{append_stderr_tail, connectable_local_addr, extract_last_error};
+    use super::ssh::{create_askpass_assets, shell_escape_single_quotes, ssh_not_found_message};
     use super::*;
+    use std::fs;
 
     fn sample_profile(mode: &str) -> TunnelProfile {
         TunnelProfile {
@@ -542,5 +335,61 @@ mod tests {
 
         assert_eq!(addr.ip().to_string(), "127.0.0.1");
         assert_eq!(addr.port(), 8080);
+    }
+
+    #[test]
+    fn normalizes_windows_missing_ssh_spawn_error() {
+        let input = "The system cannot find the file specified. (os error 2)";
+        let normalized = if cfg!(target_os = "windows") {
+            normalize_spawn_error(input)
+        } else {
+            input.to_string()
+        };
+
+        if cfg!(target_os = "windows") {
+            assert!(normalized.contains("OpenSSH Client"));
+        } else {
+            assert_eq!(normalized, input);
+        }
+    }
+
+    #[test]
+    fn windows_ssh_not_found_message_mentions_install_guidance() {
+        let message = ssh_not_found_message();
+
+        if cfg!(target_os = "windows") {
+            assert!(message.contains("OpenSSH Client"));
+            assert!(message.contains("Add-WindowsCapability"));
+        } else {
+            assert!(message.contains("SSH client"));
+        }
+    }
+
+    #[test]
+    fn creates_platform_specific_askpass_assets() {
+        let password = uuid::Uuid::new_v4().to_string();
+        let assets = create_askpass_assets(&password).expect("askpass assets");
+
+        assert!(assets.command_path.exists());
+        assert!(assets.cleanup_path.exists());
+
+        if cfg!(target_os = "windows") {
+            assert_eq!(
+                assets.command_path.extension().and_then(|ext| ext.to_str()),
+                Some("cmd")
+            );
+            let script = fs::read_to_string(&assets.command_path).expect("read cmd");
+            assert!(script.contains("type \""));
+        } else {
+            assert_eq!(
+                assets.command_path.extension().and_then(|ext| ext.to_str()),
+                Some("sh")
+            );
+            let script = fs::read_to_string(&assets.command_path).expect("read script");
+            assert!(script.contains("printf '%s\\n' '"));
+            assert!(script.contains(&password));
+        }
+
+        fs::remove_dir_all(assets.cleanup_path).expect("cleanup askpass");
     }
 }

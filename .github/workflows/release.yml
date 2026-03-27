@@ -22,6 +22,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
       - name: Resolve release metadata
         id: meta
         shell: bash
@@ -33,6 +37,11 @@ jobs:
           fi
           echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
           echo "release_version=${RELEASE_TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Validate source versions against release tag
+        env:
+          RELEASE_TAG: ${{ steps.meta.outputs.release_tag }}
+        run: node ./scripts/check-version-sync.mjs "$RELEASE_TAG"
 
       - name: Ensure GitHub release exists
         env:
@@ -106,14 +115,14 @@ jobs:
           - platform_name: windows-aarch64
             runner: windows-11-arm
             rust_target: aarch64-pc-windows-msvc
-            bundle_target: msi
-            bundle_glob: src-tauri/target/aarch64-pc-windows-msvc/release/bundle/msi/*.msi
+            bundle_target: nsis
+            bundle_glob: src-tauri/target/aarch64-pc-windows-msvc/release/bundle/nsis/*.exe
             extra_asset_glob: ""
           - platform_name: windows-x86_64
             runner: windows-latest
             rust_target: x86_64-pc-windows-msvc
-            bundle_target: msi
-            bundle_glob: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+            bundle_target: nsis
+            bundle_glob: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
             extra_asset_glob: ""
 
     runs-on: ${{ matrix.runner }}
@@ -149,6 +158,11 @@ jobs:
 
       - name: Install frontend dependencies
         run: npm ci
+
+      - name: Validate source versions against release tag
+        env:
+          RELEASE_TAG: ${{ needs.create_release.outputs.release_tag }}
+        run: node ./scripts/check-version-sync.mjs "$RELEASE_TAG"
 
       - name: Validate signing secrets early
         shell: bash

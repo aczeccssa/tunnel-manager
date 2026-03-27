@@ -1,143 +1,106 @@
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { Modal } from "./ui";
+import { Modal, useToastStore } from "./ui";
+import { ProfileJsonImportDialog } from "./ProfileJsonImportDialog";
 import type { TunnelProfile, ProfileFormData } from "../types";
 import { DEFAULT_FORM_DATA } from "../types";
-
-const tunnelSchema = z.object({
-  name: z.string().min(1, "Name is required").max(50),
-  notes: z.string().optional(),
-  websiteUrl: z.string().url("Invalid URL").optional().or(z.literal("")),
-  sshHost: z.string().min(1, "SSH Host is required"),
-  sshPort: z.coerce.number().min(1, "Port must be > 0").max(65535, "Port must be ≤ 65535"),
-  username: z.string().min(1, "Username is required"),
-  authType: z.enum(["PASSWORD", "SSH_KEY"]),
-  rememberPassword: z.boolean(),
-  hasStoredPassword: z.boolean().optional(),
-  password: z.string().optional(),
-  privateKeyPath: z.string().optional(),
-  passphrase: z.string().optional(),
-  mode: z.enum(["LOCAL", "REMOTE", "DYNAMIC"]),
-  localBindHost: z.string().optional(),
-  localPort: z.coerce.number().min(1).max(65535).optional(),
-  remoteHost: z.string().optional(),
-  remotePort: z.coerce.number().min(1).max(65535).optional(),
-  remoteBindHost: z.string().optional(),
-  localTargetHost: z.string().optional(),
-  localTargetPort: z.coerce.number().min(1).max(65535).optional(),
-  autoReconnect: z.boolean().optional(),
-  openUrlAfterStart: z.boolean().optional(),
-}).superRefine((values, ctx) => {
-  if (values.authType === "SSH_KEY" && !values.privateKeyPath?.trim()) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["privateKeyPath"], message: "Required" });
-  }
-  if (values.mode === "LOCAL") {
-    if (!values.localPort) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["localPort"], message: "Required" });
-    if (!values.remoteHost?.trim()) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["remoteHost"], message: "Required" });
-    if (!values.remotePort) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["remotePort"], message: "Required" });
-  }
-  if (values.mode === "REMOTE") {
-    if (!values.remotePort) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["remotePort"], message: "Required" });
-    if (!values.localTargetHost?.trim()) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["localTargetHost"], message: "Required" });
-    if (!values.localTargetPort) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["localTargetPort"], message: "Required" });
-  }
-  if (values.mode === "DYNAMIC" && !values.localPort) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["localPort"], message: "Required" });
-  }
-});
-
-type TunnelFormValues = z.infer<typeof tunnelSchema>;
+import {
+  normalizeProfileFormData,
+  profileToFormValues,
+  tunnelSchema,
+  type TunnelFormValues,
+} from "./profile-form-utils";
 
 interface ProfileFormProps {
   open: boolean;
   onClose: () => void;
   onSave: (profile: ProfileFormData) => void;
+  onPasteConfig?: (rawText?: string) => Promise<ProfileFormData>;
   initialData?: TunnelProfile;
 }
 
-export function ProfileForm({ open, onClose, onSave, initialData }: ProfileFormProps) {
+export function ProfileForm({ open, onClose, onSave, onPasteConfig, initialData }: ProfileFormProps) {
+  // The editor owns clipboard import state so the rest of the app stays focused on saved profiles.
   const isEditing = !!initialData;
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [pastingFromClipboard, setPastingFromClipboard] = useState(false);
+  const [manualPasteOpen, setManualPasteOpen] = useState(false);
+  const [manualPasteValue, setManualPasteValue] = useState("");
+  const [manualPasteError, setManualPasteError] = useState<string | null>(null);
+  const [confirmingManualPaste, setConfirmingManualPaste] = useState(false);
+  const { add: addToast } = useToastStore();
 
   const form = useForm<TunnelFormValues>({
     resolver: zodResolver(tunnelSchema),
-    defaultValues: initialData
-      ? {
-          name: initialData.name,
-          notes: initialData.notes || "",
-          websiteUrl: initialData.websiteUrl || "",
-          sshHost: initialData.sshHost,
-          sshPort: initialData.sshPort,
-          username: initialData.username,
-          authType: initialData.authType,
-          rememberPassword: initialData.rememberPassword ?? true,
-          hasStoredPassword: initialData.hasStoredPassword ?? false,
-          password: "",
-          privateKeyPath: initialData.privateKeyPath || "",
-          passphrase: "",
-          mode: initialData.mode,
-          localBindHost: initialData.localBindHost || "127.0.0.1",
-          localPort: initialData.localPort,
-          remoteHost: initialData.remoteHost || "",
-          remotePort: initialData.remotePort,
-          remoteBindHost: initialData.remoteBindHost || "",
-          localTargetHost: initialData.localTargetHost || "",
-          localTargetPort: initialData.localTargetPort,
-          autoReconnect: initialData.autoReconnect ?? false,
-          openUrlAfterStart: initialData.openUrlAfterStart ?? false,
-        }
-      : DEFAULT_FORM_DATA,
+    defaultValues: profileToFormValues(initialData) ?? DEFAULT_FORM_DATA,
   });
 
   useEffect(() => {
     if (open && initialData) {
-      form.reset({
-        name: initialData.name,
-        notes: initialData.notes || "",
-        websiteUrl: initialData.websiteUrl || "",
-        sshHost: initialData.sshHost,
-        sshPort: initialData.sshPort,
-        username: initialData.username,
-        authType: initialData.authType,
-        rememberPassword: initialData.rememberPassword ?? true,
-        hasStoredPassword: initialData.hasStoredPassword ?? false,
-        password: "",
-        privateKeyPath: initialData.privateKeyPath || "",
-        passphrase: "",
-        mode: initialData.mode,
-        localBindHost: initialData.localBindHost || "127.0.0.1",
-        localPort: initialData.localPort,
-        remoteHost: initialData.remoteHost || "",
-        remotePort: initialData.remotePort,
-        remoteBindHost: initialData.remoteBindHost || "",
-        localTargetHost: initialData.localTargetHost || "",
-        localTargetPort: initialData.localTargetPort,
-        autoReconnect: initialData.autoReconnect ?? false,
-        openUrlAfterStart: initialData.openUrlAfterStart ?? false,
-      });
+      form.reset(profileToFormValues(initialData) ?? DEFAULT_FORM_DATA);
     } else if (open) {
       form.reset(DEFAULT_FORM_DATA);
     }
   }, [open, initialData, form]);
 
+  useEffect(() => {
+    if (!open) {
+      setManualPasteOpen(false);
+      setManualPasteValue("");
+      setManualPasteError(null);
+      setConfirmingManualPaste(false);
+    }
+  }, [open]);
+
   const handleSubmit = (values: TunnelFormValues) => {
-    onSave({
-      ...values,
-      sshHost: values.sshHost.trim(),
-      username: values.username.trim(),
-      privateKeyPath: values.privateKeyPath?.trim() || undefined,
-      remoteHost: values.remoteHost?.trim() || undefined,
-      remoteBindHost: values.remoteBindHost?.trim() || undefined,
-      localTargetHost: values.localTargetHost?.trim() || undefined,
-      localBindHost: values.localBindHost?.trim() || undefined,
-      notes: values.notes?.trim() || undefined,
-      websiteUrl: values.websiteUrl?.trim() || undefined,
-      password: values.password || undefined,
-      passphrase: values.passphrase || undefined,
-    } as ProfileFormData);
+    onSave(normalizeProfileFormData(values) as ProfileFormData);
     onClose();
+  };
+
+  const handlePasteIntoForm = async () => {
+    if (!onPasteConfig) {
+      return;
+    }
+
+    setPastingFromClipboard(true);
+    try {
+      const nextValues = await onPasteConfig();
+      form.reset(nextValues);
+      addToast({ message: "Clipboard config loaded into the form. Review and save when ready.", type: "success" });
+    } catch (error) {
+      let clipboardText: string;
+      try {
+        clipboardText = await navigator.clipboard.readText();
+      } catch {
+        clipboardText = "";
+      }
+      setManualPasteValue(clipboardText);
+      setManualPasteError(null);
+      setManualPasteOpen(true);
+    } finally {
+      setPastingFromClipboard(false);
+    }
+  };
+
+  const handleConfirmManualPaste = async () => {
+    if (!onPasteConfig) {
+      return;
+    }
+
+    setConfirmingManualPaste(true);
+    try {
+      const nextValues = await onPasteConfig(manualPasteValue);
+      form.reset(nextValues);
+      setManualPasteOpen(false);
+      setManualPasteError(null);
+      addToast({ message: "JSON config loaded into the form. Review and save when ready.", type: "success" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setManualPasteError(message);
+    } finally {
+      setConfirmingManualPaste(false);
+    }
   };
 
   const watchMode = form.watch("mode");
@@ -145,6 +108,7 @@ export function ProfileForm({ open, onClose, onSave, initialData }: ProfileFormP
 
   return (
     <Modal open={open} onClose={onClose} size="xl" showClose={false}>
+      <>
       <form onSubmit={form.handleSubmit(handleSubmit)} className="flex flex-col h-full max-h-[90vh]">
         {/* Modal Header */}
         <header className="px-8 py-6 flex items-center justify-between border-b border-outline-variant/40 bg-surface-container-highest/30 shrink-0">
@@ -488,22 +452,52 @@ export function ProfileForm({ open, onClose, onSave, initialData }: ProfileFormP
         </div>
 
         {/* Modal Footer */}
-        <footer className="px-8 py-6 bg-surface-container-low/50 flex items-center justify-end gap-4 border-t border-outline-variant/40 shrink-0">
-          <button 
-            type="button"
-            onClick={onClose}
-            className="px-6 py-2.5 rounded-md text-on-surface-variant font-medium hover:bg-surface-container-highest transition-all active:scale-95"
-          >
-            Cancel
-          </button>
-          <button 
-            type="submit"
-            className="px-8 py-2.5 rounded-md bg-gradient-to-br from-primary to-primary-container text-on-primary font-semibold shadow-lg shadow-primary/20 hover:brightness-110 transition-all active:scale-95"
-          >
-            {isEditing ? "Save Changes" : "Save Profile"}
-          </button>
+        <footer className="px-8 py-6 bg-surface-container-low/50 flex items-center justify-between gap-4 border-t border-outline-variant/40 shrink-0">
+          <div className="flex items-center">
+            {!isEditing && onPasteConfig && (
+              <button
+                type="button"
+                onClick={() => void handlePasteIntoForm()}
+                disabled={pastingFromClipboard}
+                className="w-11 h-11 rounded-full bg-surface-container-highest text-on-surface-variant hover:text-on-surface hover:bg-surface-bright transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                title="Paste copied profile config into this form"
+              >
+                <span className="material-symbols-outlined text-[22px]">content_paste</span>
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-4">
+            <button 
+              type="button"
+              onClick={onClose}
+              className="px-6 py-2.5 rounded-md text-on-surface-variant font-medium hover:bg-surface-container-highest transition-all active:scale-95"
+            >
+              Cancel
+            </button>
+            <button 
+              type="submit"
+              className="px-8 py-2.5 rounded-md bg-primary text-on-primary font-semibold shadow-lg shadow-primary/20 hover:bg-primary-dim transition-all active:scale-95"
+            >
+              {isEditing ? "Save Changes" : "Save Profile"}
+            </button>
+          </div>
         </footer>
       </form>
+      <ProfileJsonImportDialog
+        open={manualPasteOpen}
+        value={manualPasteValue}
+        error={manualPasteError}
+        loading={confirmingManualPaste}
+        onClose={() => setManualPasteOpen(false)}
+        onChange={(value) => {
+          setManualPasteValue(value);
+          if (manualPasteError) {
+            setManualPasteError(null);
+          }
+        }}
+        onConfirm={() => void handleConfirmManualPaste()}
+      />
+      </>
     </Modal>
   );
 }

@@ -3,6 +3,7 @@ import type { TunnelProfile } from "../types";
 export function buildSSHCommand(profile: TunnelProfile): string {
   const parts: string[] = ["ssh"];
 
+  // Mirror the runtime tunnel flags closely so the preview stays useful when debugging a profile.
   parts.push("-N");
   parts.push("-o", `ServerAliveInterval=${profile.autoReconnect ? "60" : "0"}`);
   parts.push("-o", "ServerAliveCountMax=3");

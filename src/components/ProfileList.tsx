@@ -8,6 +8,7 @@ interface ProfileListProps {
   onEdit: (profile: TunnelProfile) => void;
   onDelete: (profile: TunnelProfile) => void;
   onDuplicate: (profile: TunnelProfile) => void;
+  onCopyConfig: (profile: TunnelProfile) => void;
   onStart: (profile: TunnelProfile) => void;
   onStop: (profile: TunnelProfile) => void;
   onViewLogs: (profile: TunnelProfile) => void;
@@ -18,6 +19,7 @@ export function ProfileList({
   onEdit,
   onDelete,
   onDuplicate,
+  onCopyConfig,
   onStart,
   onStop,
   onViewLogs,
@@ -75,6 +77,7 @@ export function ProfileList({
             onStop={() => onStop(profile)}
             onEdit={() => onEdit(profile)}
             onDuplicate={() => onDuplicate(profile)}
+            onCopyConfig={() => onCopyConfig(profile)}
             onDelete={() => onDelete(profile)}
             onViewLogs={() => onViewLogs(profile)}
             viewMode={viewMode}

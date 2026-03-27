@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const root = process.cwd();
+const releaseTarget = process.argv[2];
 
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
 const tauriConfig = JSON.parse(fs.readFileSync(path.join(root, "src-tauri", "tauri.conf.json"), "utf8"));
@@ -28,6 +29,25 @@ if (unique.size !== 1) {
     console.error(`- ${source}: ${version}`);
   }
   process.exit(1);
+}
+
+if (releaseTarget) {
+  const normalizedTarget = releaseTarget.trim().replace(/^v/, "");
+
+  if (!normalizedTarget) {
+    console.error(`Invalid release target: "${releaseTarget}"`);
+    process.exit(1);
+  }
+
+  if (packageJson.version !== normalizedTarget) {
+    console.error("Source version does not match release target:");
+    console.error(`- source: ${packageJson.version}`);
+    console.error(`- target: ${normalizedTarget}`);
+    process.exit(1);
+  }
+
+  console.log(`Versions are in sync at ${packageJson.version} and match ${releaseTarget}`);
+  process.exit(0);
 }
 
 console.log(`Versions are in sync at ${packageJson.version}`);

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "targets": ["nsis"],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      },
+      "nsis": {
+        "template": "resources/windows/installer.nsi",
+        "installMode": "currentUser",
+        "languages": ["English"],
+        "displayLanguageSelector": false,
+        "startMenuFolder": "SSH Tunnel Manager",
+        "installerIcon": "icons/icon.ico",
+        "headerImage": "resources/windows/installer-header.bmp",
+        "sidebarImage": "resources/windows/installer-sidebar.bmp"
+      }
+    }
+  }
+}
