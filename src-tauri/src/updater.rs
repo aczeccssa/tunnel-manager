@@ -153,26 +153,22 @@ fn build_update_check_result(
         });
     }
 
-    // Match the manifest by prefix: find the asset whose name starts with "updater-"
-    // followed by the OS name. This is resilient to arch/triple differences between
-    // build targets (e.g., "updater-windows-x86_64" vs "updater-windows" vs
-    // "updater-windows-pc-windows-msvc").
-    let os_name = if cfg!(target_os = "windows") {
-        "windows"
-    } else if cfg!(target_os = "macos") {
-        "macos"
-    } else {
-        "linux"
-    };
-    let manifest_prefix = format!("{UPDATER_ASSET_PREFIX}-{os_name}");
+    // Use the exact target string from tauri_plugin_updater to match the manifest asset.
+    // The release workflow publishes manifests named "updater-{target}.json" (e.g.,
+    // "updater-darwin-aarch64.json", "updater-windows-x86_64.json"). Using the exact
+    // target avoids ambiguity when multiple architectures are present in the same release.
+    let target = tauri_plugin_updater::target()
+        .unwrap_or_else(|| format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH))
+        .replace('_', "-");
+    let manifest_name = format!("{UPDATER_ASSET_PREFIX}-{target}.json");
     let manifest = release
         .assets
         .iter()
-        .find(|asset| asset.name.starts_with(&manifest_prefix) && asset.name.ends_with(".json"))
+        .find(|asset| asset.name == manifest_name)
         .ok_or_else(|| {
             format!(
-                "Release {} is missing a manifest asset matching {}",
-                release.tag_name, manifest_prefix
+                "Release {} is missing manifest {}",
+                release.tag_name, manifest_name
             )
         })?;
 
@@ -303,15 +299,10 @@ mod tests {
     }
 
     fn test_asset_name() -> String {
-        // Use a platform-agnostic name that matches the prefix-based asset lookup.
-        // The lookup finds assets matching "{UPDATER_ASSET_PREFIX}-{os}.json".
-        let os = if cfg!(target_os = "windows") {
-            "windows"
-        } else if cfg!(target_os = "macos") {
-            "macos"
-        } else {
-            "linux"
-        };
-        format!("{}-{}.json", UPDATER_ASSET_PREFIX, os)
+        // Use the same target logic as the production code.
+        let target = tauri_plugin_updater::target()
+            .unwrap_or_else(|| format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH))
+            .replace('_', "-");
+        format!("{}-{}.json", UPDATER_ASSET_PREFIX, target)
     }
 }
