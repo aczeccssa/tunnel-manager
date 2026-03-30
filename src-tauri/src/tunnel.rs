@@ -131,6 +131,13 @@ pub fn start_tunnel(
         cmd.process_group(0);
     }
 
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
     cmd.args(&args);
     cmd.stdin(Stdio::null());
     cmd.stdout(Stdio::null());

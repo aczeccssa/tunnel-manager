@@ -57,13 +57,6 @@ fn updater_pubkey() -> Option<&'static str> {
     option_env!("TAURI_UPDATER_PUBKEY").filter(|value| !value.trim().is_empty())
 }
 
-fn manifest_asset_name() -> String {
-    let platform = tauri_plugin_updater::target()
-        .unwrap_or_else(|| format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH))
-        .replace('_', "-");
-    format!("{UPDATER_ASSET_PREFIX}-{platform}.json")
-}
-
 fn normalize_version(value: &str) -> Result<semver::Version, String> {
     semver::Version::parse(value.trim_start_matches('v')).map_err(|e| e.to_string())
 }
@@ -160,12 +153,24 @@ fn build_update_check_result(
         });
     }
 
-    let manifest_name = manifest_asset_name();
+    // Use the exact target string from tauri_plugin_updater to match the manifest asset.
+    // The release workflow publishes manifests named "updater-{target}.json" (e.g.,
+    // "updater-darwin-aarch64.json", "updater-windows-x86_64.json"). Using the exact
+    // target avoids ambiguity when multiple architectures are present in the same release.
+    let target = tauri_plugin_updater::target()
+        .unwrap_or_else(|| format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH))
+        .replace('_', "-");
+    let manifest_name = format!("{UPDATER_ASSET_PREFIX}-{target}.json");
     let manifest = release
         .assets
         .iter()
         .find(|asset| asset.name == manifest_name)
-        .ok_or_else(|| format!("Release {} is missing {}", release.tag_name, manifest_name))?;
+        .ok_or_else(|| {
+            format!(
+                "Release {} is missing manifest {}",
+                release.tag_name, manifest_name
+            )
+        })?;
 
     Ok(UpdateCheckResult {
         configured: true,
@@ -263,7 +268,7 @@ mod tests {
 
     #[test]
     fn returns_no_update_for_same_version() {
-        let release = sample_release("v1.0.0", manifest_asset_name());
+        let release = sample_release("v1.0.0", test_asset_name());
         let result = build_update_check_result("stable".to_string(), "1.0.0".to_string(), release)
             .expect("result");
 
@@ -273,7 +278,7 @@ mod tests {
 
     #[test]
     fn returns_update_when_newer_release_exists() {
-        let release = sample_release("v1.1.0", manifest_asset_name());
+        let release = sample_release("v1.1.0", test_asset_name());
         let result = build_update_check_result("beta".to_string(), "1.0.0".to_string(), release)
             .expect("result");
 
@@ -291,5 +296,13 @@ mod tests {
             .expect_err("missing manifest should fail");
 
         assert!(error.contains("missing"));
+    }
+
+    fn test_asset_name() -> String {
+        // Use the same target logic as the production code.
+        let target = tauri_plugin_updater::target()
+            .unwrap_or_else(|| format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH))
+            .replace('_', "-");
+        format!("{}-{}.json", UPDATER_ASSET_PREFIX, target)
     }
 }
