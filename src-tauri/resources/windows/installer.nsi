@@ -120,6 +120,8 @@ InstProgressFlags smooth colored
 
 !if "${SIDEBARIMAGE}" != ""
   !define MUI_WELCOMEFINISHPAGE_BITMAP "${SIDEBARIMAGE}"
+  ; Note: installer-sidebar.bmp must be in bottom-up DIB format (positive height) for NSIS compatibility.
+  ; If the bitmap appears distorted or shows a fullscreen background, re-export it as a standard bottom-up BMP.
 !endif
 
 !if "${HEADERIMAGE}" != ""
@@ -806,10 +808,10 @@ Function CreateOrUpdateStartMenuShortcut
 
   !if "${STARTMENUFOLDER}" != ""
     CreateDirectory "$SMPROGRAMS\$AppStartMenuFolder"
-    CreateShortcut "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
+    CreateShortcut "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe" "" "$INSTDIR\${MAINBINARYNAME}.exe" 0
     !insertmacro SetLnkAppUserModelId "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk"
   !else
-    CreateShortcut "$SMPROGRAMS\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
+    CreateShortcut "$SMPROGRAMS\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe" "" "$INSTDIR\${MAINBINARYNAME}.exe" 0
     !insertmacro SetLnkAppUserModelId "$SMPROGRAMS\${PRODUCTNAME}.lnk"
   !endif
 FunctionEnd
@@ -829,6 +831,6 @@ Function CreateOrUpdateDesktopShortcut
     ${EndIf}
   ${EndIf}
 
-  CreateShortcut "$DESKTOP\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
+  CreateShortcut "$DESKTOP\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe" "" "$INSTDIR\${MAINBINARYNAME}.exe" 0
   !insertmacro SetLnkAppUserModelId "$DESKTOP\${PRODUCTNAME}.lnk"
 FunctionEnd

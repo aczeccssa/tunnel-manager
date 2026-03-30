@@ -36,4 +36,5 @@ thiserror = "2"
 parking_lot = "0.12"
 dirs = "5"
 open = "5"
+windows-sys = { version = "0.59", features = ["Win32_Foundation"] }
 libc = "0.2"

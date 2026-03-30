@@ -57,13 +57,6 @@ fn updater_pubkey() -> Option<&'static str> {
     option_env!("TAURI_UPDATER_PUBKEY").filter(|value| !value.trim().is_empty())
 }
 
-fn manifest_asset_name() -> String {
-    let platform = tauri_plugin_updater::target()
-        .unwrap_or_else(|| format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH))
-        .replace('_', "-");
-    format!("{UPDATER_ASSET_PREFIX}-{platform}.json")
-}
-
 fn normalize_version(value: &str) -> Result<semver::Version, String> {
     semver::Version::parse(value.trim_start_matches('v')).map_err(|e| e.to_string())
 }
@@ -160,12 +153,28 @@ fn build_update_check_result(
         });
     }
 
-    let manifest_name = manifest_asset_name();
+    // Match the manifest by prefix: find the asset whose name starts with "updater-"
+    // followed by the OS name. This is resilient to arch/triple differences between
+    // build targets (e.g., "updater-windows-x86_64" vs "updater-windows" vs
+    // "updater-windows-pc-windows-msvc").
+    let os_name = if cfg!(target_os = "windows") {
+        "windows"
+    } else if cfg!(target_os = "macos") {
+        "macos"
+    } else {
+        "linux"
+    };
+    let manifest_prefix = format!("{UPDATER_ASSET_PREFIX}-{os_name}");
     let manifest = release
         .assets
         .iter()
-        .find(|asset| asset.name == manifest_name)
-        .ok_or_else(|| format!("Release {} is missing {}", release.tag_name, manifest_name))?;
+        .find(|asset| asset.name.starts_with(&manifest_prefix) && asset.name.ends_with(".json"))
+        .ok_or_else(|| {
+            format!(
+                "Release {} is missing a manifest asset matching {}",
+                release.tag_name, manifest_prefix
+            )
+        })?;
 
     Ok(UpdateCheckResult {
         configured: true,
@@ -263,7 +272,7 @@ mod tests {
 
     #[test]
     fn returns_no_update_for_same_version() {
-        let release = sample_release("v1.0.0", manifest_asset_name());
+        let release = sample_release("v1.0.0", test_asset_name());
         let result = build_update_check_result("stable".to_string(), "1.0.0".to_string(), release)
             .expect("result");
 
@@ -273,7 +282,7 @@ mod tests {
 
     #[test]
     fn returns_update_when_newer_release_exists() {
-        let release = sample_release("v1.1.0", manifest_asset_name());
+        let release = sample_release("v1.1.0", test_asset_name());
         let result = build_update_check_result("beta".to_string(), "1.0.0".to_string(), release)
             .expect("result");
 
@@ -291,5 +300,18 @@ mod tests {
             .expect_err("missing manifest should fail");
 
         assert!(error.contains("missing"));
+    }
+
+    fn test_asset_name() -> String {
+        // Use a platform-agnostic name that matches the prefix-based asset lookup.
+        // The lookup finds assets matching "{UPDATER_ASSET_PREFIX}-{os}.json".
+        let os = if cfg!(target_os = "windows") {
+            "windows"
+        } else if cfg!(target_os = "macos") {
+            "macos"
+        } else {
+            "linux"
+        };
+        format!("{}-{}.json", UPDATER_ASSET_PREFIX, os)
     }
 }
